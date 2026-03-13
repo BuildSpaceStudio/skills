@@ -71,7 +71,7 @@ Manage env vars for your app's dev and prod environments. Requires authenticatio
 buildspace env list [--env dev|prod]
 ```
 
-Shows all active env vars for the target environment with masked values. System-managed keys (`BUILDSPACE_*`) are listed separately from custom variables.
+Shows all active env vars for the target environment with masked values. System-managed keys (`BUILDSPACE_*`) are listed separately from custom variables. System-managed vars include SDK keys (`BUILDSPACE_SECRET_KEY`) and database credentials (`BUILDSPACE_DB_URL`, `BUILDSPACE_DB_TOKEN`) — these are auto-injected and cannot be modified via the CLI.
 
 ### Set
 
@@ -117,6 +117,7 @@ When run inside a BuildSpace app directory (cloned via `buildspace init`), the a
 buildspace auth login
 buildspace env pull --env dev
 # Edit .env.local to fill in any secret values
+# Database env vars (BUILDSPACE_DB_URL, BUILDSPACE_DB_TOKEN) are pulled automatically
 bun install
 bun dev
 ```

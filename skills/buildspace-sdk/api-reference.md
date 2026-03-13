@@ -257,3 +257,7 @@ import { BuildspaceError } from "@buildspacestudio/sdk";
 | `service` | `"auth" \| "events" \| "storage" \| "notifications"` | Which service threw |
 | `status` | `number` | HTTP status code |
 | `message` | `string` | Human-readable description |
+
+## Database (outside the SDK)
+
+The managed Turso/libSQL database is **not** accessed through `@buildspacestudio/sdk`. Connect directly using `@libsql/client` and [Drizzle ORM](https://orm.drizzle.team). Credentials are injected as `BUILDSPACE_DB_URL` and `BUILDSPACE_DB_TOKEN` env vars. See the [SDK skill Database section](SKILL.md#database) for setup instructions and patterns.
