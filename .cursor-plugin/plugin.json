@@ -1,0 +1,20 @@
+{
+  "name": "buildspace-skills",
+  "displayName": "BuildSpace Skills",
+  "description": "SDK reference, CLI commands, and patterns for building apps with @buildspacestudio/sdk",
+  "version": "1.0.0",
+  "author": { "name": "BuildSpace", "email": "team@buildspace.studio" },
+  "homepage": "https://docs.buildspace.studio",
+  "repository": "https://github.com/buildspacestudio/skills",
+  "license": "MIT",
+  "keywords": [
+    "buildspace",
+    "sdk",
+    "auth",
+    "events",
+    "storage",
+    "notifications",
+    "nextjs"
+  ],
+  "skills": "./skills/"
+}
