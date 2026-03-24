@@ -7,8 +7,10 @@ Every Buildspace app gets a managed Turso (libSQL) database — one per environm
 Install dependencies:
 
 ```bash
-bun add @libsql/client drizzle-orm
-bun add -D drizzle-kit
+npm install @libsql/client drizzle-orm
+npm install -D drizzle-kit
+# or: pnpm add @libsql/client drizzle-orm && pnpm add -D drizzle-kit
+# or: bun add @libsql/client drizzle-orm && bun add -D drizzle-kit
 ```
 
 Create `lib/db.ts`:
@@ -82,13 +84,12 @@ import { authActionClient } from "@/lib/safe-action";
 import { db } from "@/lib/db";
 import { todos } from "@/lib/schema";
 
-export const getTodos = authActionClient
-  .action(async ({ ctx }) => {
-    return await db
-      .select()
-      .from(todos)
-      .where(eq(todos.userId, ctx.session.user.id));
-  });
+export const getTodos = authActionClient.action(async ({ ctx }) => {
+  return await db
+    .select()
+    .from(todos)
+    .where(eq(todos.userId, ctx.session.user.id));
+});
 
 export const createTodo = authActionClient
   .inputSchema(z.object({ text: z.string().min(1).max(500) }))

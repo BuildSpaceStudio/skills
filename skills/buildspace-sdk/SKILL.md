@@ -43,8 +43,12 @@ Copy `.env.example` to `.env.local` and fill in keys from the BuildSpace dashboa
 1. Generate a sign-in or sign-up URL and redirect the user:
 
 ```ts
-const signInUrl = bs.auth.getSignInUrl({ redirectUri: `${origin}/api/auth/callback` });
-const signUpUrl = bs.auth.getSignUpUrl({ redirectUri: `${origin}/api/auth/callback` });
+const signInUrl = bs.auth.getSignInUrl({
+  redirectUri: `${origin}/api/auth/callback`,
+});
+const signUpUrl = bs.auth.getSignUpUrl({
+  redirectUri: `${origin}/api/auth/callback`,
+});
 ```
 
 2. BuildSpace redirects back to `/api/auth/callback` with an authorization code.
@@ -96,11 +100,11 @@ bs.clearSession();
 
 ### Existing auth routes
 
-| Route | Purpose |
-|-------|---------|
+| Route                            | Purpose                                    |
+| -------------------------------- | ------------------------------------------ |
 | `app/api/auth/callback/route.ts` | Exchanges auth code for token, sets cookie |
-| `app/api/auth/session/route.ts` | Validates session from cookie |
-| `app/api/auth/logout/route.ts` | Revokes session, clears cookie |
+| `app/api/auth/session/route.ts`  | Validates session from cookie              |
+| `app/api/auth/logout/route.ts`   | Revokes session, clears cookie             |
 
 ## Events
 
@@ -140,7 +144,9 @@ const { upload_url, key } = await bs.storage.getUploadUrl({
   contentType: "application/pdf",
   size: fileBytes,
 });
-const { url } = await bs.storage.getSignedUrl("reports/q4.pdf", { expiresIn: 3600 });
+const { url } = await bs.storage.getSignedUrl("reports/q4.pdf", {
+  expiresIn: 3600,
+});
 const { objects } = await bs.storage.list("reports/", { limit: 50, offset: 0 });
 await bs.storage.delete("reports/q4.pdf");
 const usage = await bs.storage.getUsage();
@@ -180,8 +186,10 @@ Every Buildspace app gets a managed [Turso](https://turso.tech) (libSQL) databas
 ### Install dependencies
 
 ```bash
-bun add @libsql/client drizzle-orm
-bun add -D drizzle-kit
+npm install @libsql/client drizzle-orm
+npm install -D drizzle-kit
+# or: pnpm add @libsql/client drizzle-orm && pnpm add -D drizzle-kit
+# or: bun add @libsql/client drizzle-orm && bun add -D drizzle-kit
 ```
 
 ### Create the database client
@@ -278,17 +286,17 @@ try {
 
 ## Project files
 
-| Path | Purpose |
-|------|---------|
-| `lib/buildspace.ts` | Server SDK singleton |
-| `lib/buildspace-client.ts` | Browser SDK singleton |
-| `lib/auth.ts` | Shared `getSession()` helper (cookie + SDK validation) |
-| `lib/db.ts` | Drizzle database client (Turso/libSQL) |
-| `schema.ts` (or `lib/schema.ts`) | Drizzle table definitions |
-| `drizzle.config.ts` | Drizzle Kit configuration for push/migrations |
-| `app/api/auth/callback/route.ts` | OAuth callback handler |
-| `app/api/auth/session/route.ts` | Session validation |
-| `app/api/auth/logout/route.ts` | Logout + revocation |
+| Path                             | Purpose                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `lib/buildspace.ts`              | Server SDK singleton                                   |
+| `lib/buildspace-client.ts`       | Browser SDK singleton                                  |
+| `lib/auth.ts`                    | Shared `getSession()` helper (cookie + SDK validation) |
+| `lib/db.ts`                      | Drizzle database client (Turso/libSQL)                 |
+| `schema.ts` (or `lib/schema.ts`) | Drizzle table definitions                              |
+| `drizzle.config.ts`              | Drizzle Kit configuration for push/migrations          |
+| `app/api/auth/callback/route.ts` | OAuth callback handler                                 |
+| `app/api/auth/session/route.ts`  | Session validation                                     |
+| `app/api/auth/logout/route.ts`   | Logout + revocation                                    |
 
 ## Additional resources
 

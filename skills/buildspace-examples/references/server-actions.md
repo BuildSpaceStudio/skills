@@ -5,7 +5,8 @@
 Install dependencies:
 
 ```bash
-bun add next-safe-action zod
+npm install next-safe-action zod
+# or: pnpm add next-safe-action zod | bun add next-safe-action zod
 ```
 
 Create `lib/safe-action.ts`:
@@ -68,7 +69,12 @@ export function ProfileForm() {
   });
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); execute({ name: "Jane" }); }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        execute({ name: "Jane" });
+      }}
+    >
       <input name="name" />
       <button type="submit" disabled={isExecuting}>
         {isExecuting ? "Saving..." : "Save"}

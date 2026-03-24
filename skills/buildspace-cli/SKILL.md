@@ -118,14 +118,14 @@ buildspace auth login
 buildspace env pull --env dev
 # Edit .env.local to fill in any secret values
 # Database env vars (BUILDSPACE_DB_URL, BUILDSPACE_DB_TOKEN) are pulled automatically
-bun install
-bun dev
+npm install && npm run dev
+# or: pnpm install && pnpm dev | bun install && bun dev
 ```
 
 ### Deploy after making changes
 
 ```bash
-bun run build                    # verify the build passes first
+npm run build                    # or pnpm run build / bun run build — verify the build passes first
 git add . && git commit -m "feat: ..."
 buildspace deploy                # pushes HEAD to origin/main
 buildspace deploy status         # check deployment progress
