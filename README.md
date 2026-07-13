@@ -1,6 +1,8 @@
 # BuildSpace Skills
 
-AI agent skills for building apps with the [BuildSpace SDK](https://docs.buildspace.studio) (`@buildspacestudio/sdk`). These skills teach AI coding assistants how to use BuildSpace's authentication, event tracking, file storage, and email notification APIs in Next.js projects.
+AI agent skills for building apps with the [BuildSpace SDK](https://docs.buildspace.studio) (`@buildspacestudio/sdk`). These skills teach AI coding assistants how to use BuildSpace's authentication, event tracking, file storage, email notification, and billing APIs in Next.js projects. The recipes point at the working examples that ship in the [BuildSpace starter](https://github.com/BuildSpaceStudio/build-space-starter), where every capability has one in-repo vertical slice.
+
+> This repository is a read-only mirror, automatically synced from the BuildSpace monorepo. Issues and discussions are welcome here, but pull requests can't be merged directly — direct commits are overwritten by the next sync.
 
 ## Install
 
@@ -16,15 +18,15 @@ AI agent skills for building apps with the [BuildSpace SDK](https://docs.buildsp
 
 ### [`buildspace-sdk`](skills/buildspace-sdk/SKILL.md)
 
-SDK reference covering authentication, events, storage, and notifications. Includes entry points, environment variable setup, error handling, and complete method signatures in the companion [API reference](skills/buildspace-sdk/api-reference.md).
+SDK reference covering authentication, events, storage, notifications, and billing. Includes entry points, environment variable setup, error handling, and complete method signatures in the companion [API reference](skills/buildspace-sdk/api-reference.md).
 
-**Use when:** Adding or modifying auth flows, tracking user events, handling file uploads, or sending transactional emails.
+**Use when:** Adding or modifying auth flows, tracking user events, handling file uploads, sending transactional emails, or selling subscriptions.
 
 ### [`buildspace-examples`](skills/buildspace-examples/SKILL.md)
 
-Patterns and recipes for common features: AuthProvider + useAuth hook, route protection with `proxy.ts`, server actions with next-safe-action, event tracking, file storage, and email notifications.
+Patterns and recipes for common features: the new-feature vertical-slice playbook, AuthProvider + useAuth hook, route protection with `proxy.ts`, server actions with next-safe-action, event tracking, file storage, email notifications, and billing (checkout, portal, entitlements).
 
-**Use when:** Implementing authentication UI, route protection, server actions, or any feature that combines multiple SDK services.
+**Use when:** Adding a feature, implementing authentication UI, route protection, server actions, billing, or any feature that combines multiple SDK services.
 
 ### [`buildspace-cli`](skills/buildspace-cli/SKILL.md)
 

@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing to BuildSpace Skills! This guide covers how to add new skills.
 
+> This repository is a read-only mirror synced from the BuildSpace monorepo, so pull requests can't be merged here directly. Open a PR anyway — maintainers will apply accepted changes in the monorepo, and they'll roll out with the next sync.
+
 ## Adding a new skill
 
 1. **Fork** this repository and create a branch.

@@ -1,6 +1,6 @@
 ---
 name: buildspace-sdk
-description: Implements features using the BuildSpace SDK (@buildspacestudio/sdk) for authentication, event tracking, file storage, email notifications, and managed database connections. Use when adding or modifying auth flows, tracking user events, handling file uploads, sending transactional emails, or setting up and querying the app database in your Next.js project.
+description: Implements features using the BuildSpace SDK (@buildspacestudio/sdk) for authentication, event tracking, file storage, email notifications, billing, and managed database connections. Use when adding or modifying auth flows, tracking user events, handling file uploads, sending transactional emails, selling subscriptions or gating paid features, or setting up and querying the app database in your Next.js project.
 ---
 
 # BuildSpace SDK
@@ -43,12 +43,8 @@ Copy `.env.example` to `.env.local` and fill in keys from the BuildSpace dashboa
 1. Generate a sign-in or sign-up URL and redirect the user:
 
 ```ts
-const signInUrl = bs.auth.getSignInUrl({
-  redirectUri: `${origin}/api/auth/callback`,
-});
-const signUpUrl = bs.auth.getSignUpUrl({
-  redirectUri: `${origin}/api/auth/callback`,
-});
+const signInUrl = bs.auth.getSignInUrl({ redirectUri: `${origin}/api/auth/callback` });
+const signUpUrl = bs.auth.getSignUpUrl({ redirectUri: `${origin}/api/auth/callback` });
 ```
 
 2. BuildSpace redirects back to `/api/auth/callback` with an authorization code.
@@ -100,11 +96,11 @@ bs.clearSession();
 
 ### Existing auth routes
 
-| Route                            | Purpose                                    |
-| -------------------------------- | ------------------------------------------ |
+| Route | Purpose |
+|-------|---------|
 | `app/api/auth/callback/route.ts` | Exchanges auth code for token, sets cookie |
-| `app/api/auth/session/route.ts`  | Validates session from cookie              |
-| `app/api/auth/logout/route.ts`   | Revokes session, clears cookie             |
+| `app/api/auth/session/route.ts` | Validates session from cookie |
+| `app/api/auth/logout/route.ts` | Revokes session, clears cookie |
 
 ## Events
 
@@ -144,9 +140,7 @@ const { upload_url, key } = await bs.storage.getUploadUrl({
   contentType: "application/pdf",
   size: fileBytes,
 });
-const { url } = await bs.storage.getSignedUrl("reports/q4.pdf", {
-  expiresIn: 3600,
-});
+const { url } = await bs.storage.getSignedUrl("reports/q4.pdf", { expiresIn: 3600 });
 const { objects } = await bs.storage.list("reports/", { limit: 50, offset: 0 });
 await bs.storage.delete("reports/q4.pdf");
 const usage = await bs.storage.getUsage();
@@ -170,6 +164,35 @@ await bs.notifications.sendTemplate("welcome-email", {
 });
 ```
 
+## Billing (server only)
+
+Requires `@buildspacestudio/sdk` >= 0.4.0 and billing enabled for the app in Creator Studio. **In this project, always go through the helpers in `lib/billing.ts`** — they feature-detect the namespace and degrade gracefully when billing isn't available.
+
+```ts
+const status = await bs.billing.getStatus();
+// { enabled, mode: "test" | "live" | null, status, testMode }
+
+const { products } = await bs.billing.listProducts();
+const { prices } = await bs.billing.listPrices();
+
+const { url } = await bs.billing.createCheckout({
+  userId,                    // BuildSpace user id from the session
+  priceId,                   // or lookupKey
+  successUrl: `${origin}/dashboard/billing?checkout=success`,
+  cancelUrl: `${origin}/dashboard/billing?checkout=cancelled`,
+});
+
+const { url: portalUrl } = await bs.billing.createPortalSession({
+  userId,
+  returnUrl: `${origin}/dashboard/billing`,
+});
+
+const { subscription } = await bs.billing.getSubscription({ userId });
+const { active } = await bs.billing.getEntitlements({ userId });
+```
+
+Show a "Test mode" banner whenever `status.testMode` is true — payments use Stripe test cards. For the full recipe (pricing UI states, entitlement gating), see the [billing reference](../buildspace-examples/references/billing.md).
+
 ## Database
 
 Every Buildspace app gets a managed [Turso](https://turso.tech) (libSQL) database — one per environment (`dev` and `prod`). The database is **not** accessed through the Buildspace SDK; you connect directly using `@libsql/client` and optionally [Drizzle ORM](https://orm.drizzle.team).
@@ -182,6 +205,10 @@ Every Buildspace app gets a managed [Turso](https://turso.tech) (libSQL) databas
    - `BUILDSPACE_DB_TOKEN` — auth token (JWT)
 3. **Connection** — Your app connects directly to Turso using `@libsql/client`. No SDK wrapper needed.
 4. **Schema ownership** — You define and manage your own tables and migrations. The platform does not inject or manage any tables.
+
+### In this project
+
+Everything below is already set up: client at `lib/db/index.ts`, schema at `lib/db/schema.ts`, config at `drizzle.config.ts`, migrations in `drizzle/`. Use `bun db:generate` / `bun db:migrate`, and see the [database reference](../buildspace-examples/references/database.md). The sections that follow are for wiring a project from scratch.
 
 ### Install dependencies
 
@@ -282,21 +309,25 @@ try {
 }
 ```
 
-`BuildspaceError` fields: `code` (string), `service` (`"auth" | "events" | "storage" | "notifications"`), `status` (HTTP status), `message`.
+`BuildspaceError` fields: `code` (string), `service` (`"auth" | "events" | "storage" | "notifications" | "billing"`), `status` (HTTP status), `message`.
 
 ## Project files
 
-| Path                             | Purpose                                                |
-| -------------------------------- | ------------------------------------------------------ |
-| `lib/buildspace.ts`              | Server SDK singleton                                   |
-| `lib/buildspace-client.ts`       | Browser SDK singleton                                  |
-| `lib/auth.ts`                    | Shared `getSession()` helper (cookie + SDK validation) |
-| `lib/db.ts`                      | Drizzle database client (Turso/libSQL)                 |
-| `schema.ts` (or `lib/schema.ts`) | Drizzle table definitions                              |
-| `drizzle.config.ts`              | Drizzle Kit configuration for push/migrations          |
-| `app/api/auth/callback/route.ts` | OAuth callback handler                                 |
-| `app/api/auth/session/route.ts`  | Session validation                                     |
-| `app/api/auth/logout/route.ts`   | Logout + revocation                                    |
+| Path | Purpose |
+|------|---------|
+| `lib/buildspace.ts` | Server SDK singleton |
+| `lib/buildspace-client.ts` | Browser SDK singleton |
+| `lib/auth.ts` | `getSession()` + `getCurrentUser()` helpers (cookie + SDK validation) |
+| `lib/analytics.ts` | Server-side `trackEvent` wrapper (never throws) |
+| `lib/email.ts` | Transactional email functions (`sendWelcomeEmail`, …) |
+| `lib/billing.ts` | Billing helpers with graceful degradation |
+| `lib/db/index.ts` | Drizzle database client (Turso/libSQL) |
+| `lib/db/schema.ts` | Drizzle table definitions |
+| `lib/db/users.ts` | Local user mirror helpers |
+| `drizzle.config.ts` | Drizzle Kit configuration for migrations |
+| `app/api/auth/callback/route.ts` | OAuth callback + user upsert + first-sign-in hook |
+| `app/api/auth/session/route.ts` | Session validation |
+| `app/api/auth/logout/route.ts` | Logout + revocation |
 
 ## Additional resources
 

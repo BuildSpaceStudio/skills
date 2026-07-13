@@ -1,122 +1,53 @@
 # Database Setup and CRUD
 
-Every Buildspace app gets a managed Turso (libSQL) database — one per environment. Access it directly via `@libsql/client` + Drizzle ORM (not through the Buildspace SDK).
+Every BuildSpace app gets a managed Turso (libSQL) database — one per environment. Access it directly via `@libsql/client` + Drizzle ORM (not through the BuildSpace SDK).
 
-## Setup
+Setup already exists in this project — extend it, don't recreate it:
 
-Install dependencies:
+| Concern | Lives at |
+|---------|----------|
+| Drizzle client (server-only) | `lib/db/index.ts` — import as `import { db, schema } from "@/lib/db"` |
+| Table definitions | `lib/db/schema.ts` (`users`, `todos`) |
+| User-record helpers | `lib/db/users.ts` |
+| Drizzle Kit config | `drizzle.config.ts` |
+| Versioned migrations | `drizzle/` (generated — never hand-edit) |
+| Local-dev seed | `lib/db/seed.ts` (refuses to run against remote DBs) |
 
-```bash
-npm install @libsql/client drizzle-orm
-npm install -D drizzle-kit
-# or: pnpm add @libsql/client drizzle-orm && pnpm add -D drizzle-kit
-# or: bun add @libsql/client drizzle-orm && bun add -D drizzle-kit
-```
+## Schema changes
 
-Create `lib/db.ts`:
+1. Edit `lib/db/schema.ts` using SQLite column types (`integer`, `text`, `real`, `blob`) — Turso is SQLite-compatible. Follow the existing shape: `text` UUID primary keys via `$defaultFn(() => crypto.randomUUID())`, ISO-string timestamps, `integer(..., { mode: "boolean" })` for booleans. Export the inferred types (`$inferSelect` / `$inferInsert`).
+2. `bun db:generate` — creates a migration in `drizzle/`.
+3. `bun db:migrate` — applies it locally (`file:local.db` by default).
 
-```ts
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "./schema";
-
-const client = createClient({
-  url: process.env.BUILDSPACE_DB_URL ?? "file:local.db",
-  authToken: process.env.BUILDSPACE_DB_TOKEN,
-});
-
-export const db = drizzle(client, { schema });
-```
-
-The `file:local.db` fallback enables local development without a remote Turso connection.
-
-## Schema definition
-
-Create `lib/schema.ts` using SQLite column types (`integer`, `text`, `real`, `blob`) — Turso is SQLite-compatible:
-
-```ts
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-
-export const todos = sqliteTable("todos", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: text("user_id").notNull(),
-  text: text("text").notNull(),
-  completed: integer("completed").notNull().default(0),
-  createdAt: text("created_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
-});
-```
-
-## Drizzle config
-
-Create `drizzle.config.ts` at the project root:
-
-```ts
-import { defineConfig } from "drizzle-kit";
-
-export default defineConfig({
-  schema: "./lib/schema.ts",
-  dialect: "turso",
-  dbCredentials: {
-    url: process.env.BUILDSPACE_DB_URL!,
-    authToken: process.env.BUILDSPACE_DB_TOKEN!,
-  },
-});
-```
-
-Push schema:
-
-```bash
-npx drizzle-kit push
-```
+Use versioned migrations, not `drizzle-kit push` — deploys run `bun run db:migrate` automatically (see `railway.json` `preDeployCommand`), so committed migrations are how schema reaches production.
 
 ## CRUD server actions
 
-Requires `next-safe-action` — see [server-actions.md](server-actions.md) for setup.
+`app/dashboard/todos/actions.ts` is the working example: zod input schema, insert/update/delete scoped by `ctx.session.user.id`, `revalidatePath` after each mutation. Copy that file's shape for new tables.
 
 ```ts
-"use server";
+const [todo] = await db
+  .insert(schema.todos)
+  .values({ text: parsedInput.text, userId: ctx.session.user.id })
+  .returning();
+```
 
-import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { authActionClient } from "@/lib/safe-action";
-import { db } from "@/lib/db";
-import { todos } from "@/lib/schema";
+Always scope updates and deletes to the owner:
 
-export const getTodos = authActionClient.action(async ({ ctx }) => {
-  return await db
-    .select()
-    .from(todos)
-    .where(eq(todos.userId, ctx.session.user.id));
-});
+```ts
+.where(and(eq(schema.todos.id, parsedInput.id), eq(schema.todos.userId, ctx.session.user.id)))
+```
 
-export const createTodo = authActionClient
-  .inputSchema(z.object({ text: z.string().min(1).max(500) }))
-  .action(async ({ parsedInput, ctx }) => {
-    const [todo] = await db
-      .insert(todos)
-      .values({ userId: ctx.session.user.id, text: parsedInput.text })
-      .returning();
-    return todo;
-  });
+## Reading data in server components
 
-export const toggleTodo = authActionClient
-  .inputSchema(z.object({ id: z.number(), completed: z.boolean() }))
-  .action(async ({ parsedInput }) => {
-    await db
-      .update(todos)
-      .set({ completed: parsedInput.completed ? 1 : 0 })
-      .where(eq(todos.id, parsedInput.id));
-    return { success: true };
-  });
+Query directly in the page (see `app/dashboard/todos/page.tsx`):
 
-export const deleteTodo = authActionClient
-  .inputSchema(z.object({ id: z.number() }))
-  .action(async ({ parsedInput }) => {
-    await db.delete(todos).where(eq(todos.id, parsedInput.id));
-    return { success: true };
-  });
+```tsx
+const todos = await db
+  .select()
+  .from(schema.todos)
+  .where(eq(schema.todos.userId, session.user.id))
+  .orderBy(desc(schema.todos.createdAt));
 ```
 
 ## Database in API routes
@@ -127,8 +58,7 @@ For cases where server actions aren't suitable (streaming, external callers):
 import { type NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { todos } from "@/lib/schema";
+import { db, schema } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -138,8 +68,8 @@ export async function GET(request: NextRequest) {
 
   const userTodos = await db
     .select()
-    .from(todos)
-    .where(eq(todos.userId, session.user.id));
+    .from(schema.todos)
+    .where(eq(schema.todos.userId, session.user.id));
 
   return NextResponse.json(userTodos);
 }
@@ -149,5 +79,6 @@ export async function GET(request: NextRequest) {
 
 - `BUILDSPACE_DB_URL` and `BUILDSPACE_DB_TOKEN` are auto-injected in deployed environments — no manual setup needed
 - Dev and prod get separate databases with separate tokens
-- Use `npx drizzle-kit push` to apply schema changes, or `generate` + `migrate` for versioned migrations
+- `file:local.db` fallback enables local development without a remote Turso connection
+- Migrations run automatically on deploy via `railway.json`'s `preDeployCommand`
 - Token rotation is available from the Data tab in Creator Studio

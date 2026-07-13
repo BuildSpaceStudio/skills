@@ -42,15 +42,18 @@ Clone a BuildSpace app repo by slug:
 buildspace init <slug>
 ```
 
-## Deploy
+## Deploy (dev)
 
-Push the current HEAD to `origin/main`, which triggers a dev deployment:
+Push the current HEAD to the dev branch (`buildspace/dev`) — the branch the hosted dev environment serves — and sync the hosted dev workspace:
 
 ```bash
-buildspace deploy
+buildspace deploy            # push + sync dev
+buildspace deploy --wait     # also wait for the deployment to finish (non-zero exit on failure)
 ```
 
 The app slug is auto-detected from the git remote origin (format: `<gitBaseUrl>/<slug>.git`). Override with `--app <slug>`.
+
+If the push is rejected, the remote dev branch has commits you don't have (often from the hosted workspace agent) — run `git fetch origin buildspace/dev && git rebase origin/buildspace/dev` and deploy again.
 
 ### Deployment status and logs
 
@@ -59,7 +62,27 @@ buildspace deploy status                       # View deployment status for dev/
 buildspace deploy logs --env dev --latest       # View latest dev deployment logs
 ```
 
-All deploys go to the **dev** environment by default. The repository is the source of truth for what gets deployed.
+All deploys go to the **dev** environment. Production only changes via `buildspace promote` (below).
+
+## Ship to production
+
+Dev is where you iterate; nothing reaches production until you promote. Roll out whatever is on the dev branch right now:
+
+```bash
+buildspace promote --latest --yes --watch
+```
+
+- `--latest` promotes the current dev branch head (no deployment id needed). Alternatively pass `--deployment <id>` from `buildspace deploy history --env dev`.
+- `--yes` skips the interactive confirmation — **required in non-interactive/agent sessions** (without it, a headless run fails fast instead of hanging).
+- `--watch` follows the rollout to a terminal state, prints the production URL on success, and exits non-zero if the rollout fails.
+
+After a successful rollout, verify the app responds (the starter guarantees `GET /api/health`):
+
+```bash
+buildspace deploy status --env prod   # shows the prod URL and status
+```
+
+If the rollout fails, inspect it with `buildspace deploy logs --env prod --latest`.
 
 ## Environment variables
 
@@ -127,8 +150,14 @@ npm install && npm run dev
 ```bash
 npm run build                    # or pnpm run build / bun run build — verify the build passes first
 git add . && git commit -m "feat: ..."
-buildspace deploy                # pushes HEAD to origin/main
-buildspace deploy status         # check deployment progress
+buildspace deploy --wait         # pushes HEAD to buildspace/dev and waits for the deployment
+```
+
+### Ship to production
+
+```bash
+buildspace promote --latest --yes --watch    # roll out the current dev branch and follow it
+buildspace deploy status --env prod          # confirm prod is live and grab the URL
 ```
 
 ### Add a new env var

@@ -1,204 +1,70 @@
 # SDK Features: Events, Storage, Notifications
 
+Each capability has a working example in this project. Extend the existing files; only fall back to from-scratch snippets for patterns that aren't baked in.
+
 ## Event tracking
 
-### Browser events
+| Pattern | Lives at |
+|---------|----------|
+| Server-side helper (never throws) | `lib/analytics.ts` → `trackEvent({ event, properties, userId })` |
+| Client page-view tracking (batched) | `components/analytics.tsx`, mounted in `app/layout.tsx` |
+| Tracking inside a server action | `app/dashboard/todos/actions.ts` (`todo_created`) |
+| Tracking from a client component | `app/dashboard/files/file-uploader.tsx` (`file_uploaded`) |
+| First-sign-in event | `app/api/auth/callback/route.ts` (`user_signed_up`) |
 
-Track directly from client components — events are batched and auto-flushed:
+Rules:
+
+- Server-side, always go through `trackEvent` from `lib/analytics.ts` — it catches `BuildspaceError` and logs instead of failing the request. Analytics must never break the app.
+- Client-side, call `getBrowserClient().events.track(...)` directly — the browser SDK batches and auto-flushes.
+
+```ts
+// server (actions, routes)
+await trackEvent({ event: "report_exported", properties: { reportId }, userId: ctx.session.user.id });
+```
 
 ```tsx
-"use client";
-import { getBrowserClient } from "@/lib/buildspace-client";
-
-function TrackableButton() {
-  const handleClick = () => {
-    const bs = getBrowserClient();
-    bs.events.track("button_clicked", { page: "pricing", variant: "cta" });
-  };
-
-  return <button onClick={handleClick}>Get Started</button>;
-}
-```
-
-### Server-side events via server action
-
-For events that must be tracked server-side (after a purchase, sign-up). Requires `next-safe-action` — see [server-actions.md](server-actions.md).
-
-```ts
-"use server";
-
-import { z } from "zod";
-import { authActionClient } from "@/lib/safe-action";
-import { getServerClient } from "@/lib/buildspace";
-
-export const trackEvent = authActionClient
-  .inputSchema(
-    z.object({
-      event: z.string().min(1),
-      properties: z.record(z.unknown()).optional(),
-    }),
-  )
-  .action(async ({ parsedInput, ctx }) => {
-    const bs = getServerClient();
-    bs.setSession(ctx.session.token);
-    const result = await bs.events.track(
-      parsedInput.event,
-      parsedInput.properties,
-      ctx.session.user.id,
-    );
-    bs.clearSession();
-    return result;
-  });
-```
-
-### Server-side events via API route
-
-For external callers or cases where a server action isn't suitable:
-
-```ts
-import { type NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getServerClient } from "@/lib/buildspace";
-import { BuildspaceError } from "@buildspacestudio/sdk";
-
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await request.json();
-  if (!body.event || typeof body.event !== "string") {
-    return NextResponse.json({ error: "Missing required field: event" }, { status: 400 });
-  }
-
-  try {
-    const bs = getServerClient();
-    bs.setSession(session.token);
-    const result = await bs.events.track(body.event, body.properties, session.user.id);
-    bs.clearSession();
-    return NextResponse.json(result);
-  } catch (err) {
-    if (err instanceof BuildspaceError) {
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
-    }
-    throw err;
-  }
-}
+// client
+getBrowserClient().events.track("button_clicked", { page: "pricing" });
 ```
 
 ## File storage
 
-### Browser upload
+| Pattern | Lives at |
+|---------|----------|
+| Browser-direct upload | `app/dashboard/files/file-uploader.tsx` (`bs.storage.upload`) |
+| Server-side listing scoped to a prefix | `app/dashboard/files/page.tsx` (`bs.storage.list`) |
+| Server-signed download URL via action | `app/dashboard/files/actions.ts` (`getSignedUrl`, 5-min expiry) |
+| Delete with ownership check | `app/dashboard/files/actions.ts` (`deleteFile`) |
+| Avatar upload + key stored in DB | `app/dashboard/settings/avatar-upload.tsx` + `actions.ts` |
 
-Upload directly from the browser — no API route needed:
+Conventions the files slice encodes:
 
-```tsx
-"use client";
-import { getBrowserClient } from "@/lib/buildspace-client";
-
-function FileUploader() {
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const bs = getBrowserClient();
-    const { key, url } = await bs.storage.upload(file, {
-      path: `uploads/${file.name}`,
-    });
-  };
-
-  return <input type="file" onChange={handleUpload} />;
-}
-```
-
-### Server actions for listing and signed URLs
-
-Requires `next-safe-action` — see [server-actions.md](server-actions.md).
-
-```ts
-"use server";
-
-import { z } from "zod";
-import { authActionClient } from "@/lib/safe-action";
-import { getServerClient } from "@/lib/buildspace";
-
-export const listFiles = authActionClient
-  .inputSchema(
-    z.object({
-      prefix: z.string().optional(),
-      limit: z.number().optional(),
-      offset: z.number().optional(),
-    }),
-  )
-  .action(async ({ parsedInput, ctx }) => {
-    const bs = getServerClient();
-    bs.setSession(ctx.session.token);
-    const result = await bs.storage.list(parsedInput.prefix, {
-      limit: parsedInput.limit,
-      offset: parsedInput.offset,
-    });
-    bs.clearSession();
-    return result;
-  });
-
-export const getSignedUrl = authActionClient
-  .inputSchema(
-    z.object({
-      key: z.string().min(1),
-      expiresIn: z.number().optional(),
-    }),
-  )
-  .action(async ({ parsedInput, ctx }) => {
-    const bs = getServerClient();
-    bs.setSession(ctx.session.token);
-    const result = await bs.storage.getSignedUrl(parsedInput.key, {
-      expiresIn: parsedInput.expiresIn,
-    });
-    bs.clearSession();
-    return result;
-  });
-```
+- **Path ownership**: user files live under `files/{userId}/…`, avatars at `avatars/{userId}`. Every server action validates the key prefix against `ctx.session.user.id` before touching storage.
+- **Store keys, not URLs**: signed URLs expire — persist the storage key (see `users.avatarUrl`) and mint a signed URL server-side on read (see `app/dashboard/settings/page.tsx`).
+- **Degrade gracefully**: catch `BuildspaceError` on reads and render an empty state (see `listFiles` in `app/dashboard/files/page.tsx`).
 
 ## Email notifications
 
-Server-only (requires the secret key). Requires `next-safe-action` — see [server-actions.md](server-actions.md).
+Server-only (requires the secret key). `lib/email.ts` is the home for all transactional email: one exported function per message type with a small inline HTML template, failures logged but never thrown. `sendWelcomeEmail` (called from the auth callback on first sign-in) is the working example — add new message types beside it:
 
 ```ts
-"use server";
-
-import { z } from "zod";
-import { authActionClient } from "@/lib/safe-action";
-import { getServerClient } from "@/lib/buildspace";
-
-export const sendNotification = authActionClient
-  .inputSchema(
-    z.object({
-      to: z.union([z.string().email(), z.array(z.string().email())]),
-      subject: z.string().min(1),
-      html: z.string().min(1),
-      text: z.string().optional(),
-      replyTo: z.string().email().optional(),
-      metadata: z.record(z.string()).optional(),
-    }),
-  )
-  .action(async ({ parsedInput }) => {
+export async function sendReceiptEmail({ to, amount }: { to: string; amount: string }) {
+  try {
     const bs = getServerClient();
-    return await bs.notifications.send(parsedInput);
-  });
-
-export const sendTemplateNotification = authActionClient
-  .inputSchema(
-    z.object({
-      templateSlug: z.string().min(1),
-      to: z.union([z.string().email(), z.array(z.string().email())]),
-      variables: z.record(z.string()).optional(),
-      metadata: z.record(z.string()).optional(),
-    }),
-  )
-  .action(async ({ parsedInput }) => {
-    const bs = getServerClient();
-    const { templateSlug, ...options } = parsedInput;
-    return await bs.notifications.sendTemplate(templateSlug, options);
-  });
+    await bs.notifications.send({
+      to,
+      subject: "Your receipt",
+      html: `<p>Thanks! We charged ${amount}.</p>`,
+      text: `Thanks! We charged ${amount}.`,
+    });
+  } catch (err) {
+    if (err instanceof BuildspaceError) {
+      console.error(`[email] receipt failed: ${err.code} (${err.status})`);
+      return;
+    }
+    console.error("[email] receipt failed", err);
+  }
+}
 ```
+
+For dashboard-managed templates, use `bs.notifications.sendTemplate(templateSlug, { to, variables })` inside the same `lib/email.ts` wrapper shape.

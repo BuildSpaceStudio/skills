@@ -1,141 +1,60 @@
 # Authentication & Route Protection
 
+All of these patterns are already implemented in this project. Point at the real files and extend them — don't recreate them.
+
+## Auth wiring map
+
+| Concern | Lives at |
+|---------|----------|
+| Client auth state (`useAuth`) | `components/auth-provider.tsx` |
+| Provider mounted with server-fetched `initialUser` | `app/layout.tsx` |
+| Server session validation | `lib/auth.ts` → `getSession()` |
+| Session + local role in one call | `lib/auth.ts` → `getCurrentUser()` |
+| Local user mirror (upsert on sign-in) | `lib/db/users.ts` |
+| OAuth callback + first-sign-in side effects | `app/api/auth/callback/route.ts` |
+| Session check / logout API routes | `app/api/auth/session/route.ts`, `app/api/auth/logout/route.ts` |
+| Route-level protection for `/dashboard/*` | `proxy.ts` |
+| Auth-aware header (sign in/out, user menu) | `components/site-header.tsx` |
+
 ## AuthProvider + useAuth hook
 
-Use when your app needs auth state in client components (user name, sign in/out buttons, conditional UI).
-
-Create `components/auth-provider.tsx` — a context provider that:
-
-- Accepts `initialUser` (fetched server-side in the root layout) to avoid loading spinners on first paint
-- Exposes `user`, `loading`, `signIn`, `signUp`, `signOut` via `useAuth()`
-- Uses `getBrowserClient()` for sign-in/sign-up URLs with `redirectUri` pointing to `/api/auth/callback`
-- Calls `POST /api/auth/logout` for sign-out and clears local user state
+`components/auth-provider.tsx` exposes `user`, `loading`, `signIn`, `signUp`, `signOut` via `useAuth()`. It's mounted in `app/layout.tsx` with `initialUser` fetched server-side (no loading flash). Client components opt in:
 
 ```tsx
 "use client";
+import { useAuth } from "@/components/auth-provider";
 
-import { createContext, useCallback, useContext, useState } from "react";
-import { getBrowserClient } from "@/lib/buildspace-client";
-
-interface User {
-  id: string;
-  email: string;
-  name: string | null;
-}
-
-interface AuthContextValue {
-  user: User | null;
-  loading: boolean;
-  signIn: () => void;
-  signUp: () => void;
-  signOut: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue>({
-  user: null,
-  loading: true,
-  signIn: () => {},
-  signUp: () => {},
-  signOut: async () => {},
-});
-
-export function useAuth() {
-  return useContext(AuthContext);
-}
-
-export function AuthProvider({
-  children,
-  initialUser,
-}: {
-  children: React.ReactNode;
-  initialUser: User | null;
-}) {
-  const [user, setUser] = useState<User | null>(initialUser);
-  const [loading] = useState(false);
-
-  const signIn = useCallback(() => {
-    const bs = getBrowserClient();
-    window.location.href = bs.auth.getSignInUrl({
-      redirectUri: `${window.location.origin}/api/auth/callback`,
-    });
-  }, []);
-
-  const signUp = useCallback(() => {
-    const bs = getBrowserClient();
-    window.location.href = bs.auth.getSignUpUrl({
-      redirectUri: `${window.location.origin}/api/auth/callback`,
-    });
-  }, []);
-
-  const signOut = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
-  }, []);
-
-  return (
-    <AuthContext value={{ user, loading, signIn, signUp, signOut }}>
-      {children}
-    </AuthContext>
-  );
+function AccountBadge() {
+  const { user, signIn } = useAuth();
+  if (!user) return <button onClick={signIn}>Sign in</button>;
+  return <span>{user.email}</span>;
 }
 ```
 
-Wrap the provider in `app/layout.tsx` — make the layout `async` so the session is fetched server-side:
+`components/site-header.tsx` is the full working example (avatar menu, sign in/up buttons).
+
+## Server-side session checks
+
+Every server component page under `/dashboard` guards itself:
 
 ```tsx
-import { getSession } from "@/lib/auth";
-import { AuthProvider } from "@/components/auth-provider";
-
-export default async function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
-  const session = await getSession();
-
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <AuthProvider initialUser={session?.user ?? null}>
-          {children}
-        </AuthProvider>
-      </body>
-    </html>
-  );
-}
+const session = await getSession();
+if (!session) redirect("/");
 ```
 
-Components opt-in to auth by calling `useAuth()`. Pages that don't need auth simply ignore it.
+When you also need the local role or profile record, use `getCurrentUser()` — see `app/dashboard/admin/page.tsx` for the role-gated version (`if (current.role !== "super_admin") redirect("/dashboard")`).
+
+## Local user mirror
+
+The `users` table mirrors BuildSpace identity: `app/api/auth/callback/route.ts` calls `upsertUserFromSession()` (from `lib/db/users.ts`) after the token exchange. On **first** sign-in it also fires the `user_signed_up` event and the welcome email — that callback is the one place for signup side effects. Hang app data (roles, preferences, avatar keys) off this local row, keyed by `buildspaceUserId`.
 
 ## Route protection with proxy.ts
 
-Use when certain pages should hard-redirect unauthenticated users.
-
-Create `proxy.ts` at the project root (Next.js 16 convention — NOT `middleware.ts`):
-
-```ts
-import { NextResponse } from "next/server";
-
-export function proxy(request: Request) {
-  const url = new URL(request.url);
-  const cookie = request.headers.get("cookie") ?? "";
-  const hasSession = cookie.includes("bs_session=");
-
-  if (!hasSession) {
-    return NextResponse.redirect(new URL("/", url.origin));
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ["/dashboard/:path*"],
-};
-```
-
-This is a fast cookie-presence check — no SDK call. Full session validation happens in server actions and API routes. The file must be named `proxy.ts` and the export must be `function proxy`.
+`proxy.ts` at the project root (Next.js 16 convention — NOT `middleware.ts`) does a fast cookie-presence check for `/dashboard/:path*` and redirects to `/` when the `bs_session` cookie is missing. No SDK call — full validation happens in pages, server actions, and API routes. If you add a protected area outside `/dashboard`, extend the `matcher` there.
 
 ## Protected API route pattern
 
-Use when an API route (streaming, webhooks, external callers) requires authentication.
+Use when an API route (streaming, webhooks, external callers) requires authentication:
 
 ```ts
 import { type NextRequest, NextResponse } from "next/server";

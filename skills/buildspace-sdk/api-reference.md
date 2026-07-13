@@ -11,6 +11,7 @@
 - [Storage — client methods](#storage--client-methods)
 - [Storage — server methods](#storage--server-methods)
 - [Notifications — server methods](#notifications--server-methods)
+- [Billing — server methods](#billing--server-methods)
 - [BuildspaceError](#buildspaceerror)
 
 ## Initialization
@@ -243,6 +244,62 @@ Returns: `{ id: string }`
 
 Returns: `{ id: string }`
 
+## Billing — server methods
+
+Available via `bs.billing` on the server client. Requires SDK >= 0.4.0 and billing enabled in Creator Studio. A client-side namespace also exists (`bs.billing` on the browser client) for listing prices and redirecting to Checkout, but server-side checkout is the preferred integration.
+
+### `getStatus()`
+
+Returns: `{ enabled: boolean, mode: "test" | "live" | null, status: "disabled" | "setup_required" | "active" | "paused" | null, testMode: boolean }`
+
+### `listProducts()`
+
+Returns: `{ products: Array<{ id, name, description, active, createdAt }> }`
+
+### `listPrices()`
+
+Returns: `{ prices: Array<{ id, productId, productName, amountCents, currency, interval, lookupKey, type, active, createdAt }> }`
+
+### `createCheckout(options)`
+
+Creates a Stripe Checkout Session on the creator's connected account.
+
+| Param | Type | Required |
+|-------|------|----------|
+| `options.successUrl` | `string` | yes |
+| `options.cancelUrl` | `string` | yes |
+| `options.priceId` | `string` | one of priceId/lookupKey |
+| `options.lookupKey` | `string` | one of priceId/lookupKey |
+| `options.userId` | `string` | for BuildSpace-authenticated users |
+| `options.appUserId` | `string` | for app-defined identities |
+| `options.quantity` | `number` | no |
+| `options.metadata` | `Record<string, string>` | no |
+
+Returns: `{ url: string, stripe_checkout_session_id: string }`
+
+### `createPortalSession(options)`
+
+| Param | Type | Required |
+|-------|------|----------|
+| `options.returnUrl` | `string` | yes |
+| `options.userId` / `options.appUserId` | `string` | one of |
+
+Returns: `{ url: string }`
+
+### `getSubscription(options?)`
+
+| Param | Type | Required |
+|-------|------|----------|
+| `options.userId` / `options.appUserId` | `string` | one of |
+
+Returns: `{ subscription: { id, status, currentPeriodEnd, cancelAtPeriodEnd } | null }`
+
+### `getEntitlements(options?)`
+
+Same params as `getSubscription`.
+
+Returns: `{ active: boolean, subscription: { id, status, currentPeriodEnd } | null }`
+
 ## BuildspaceError
 
 All SDK methods throw `BuildspaceError` on failure.
@@ -254,7 +311,7 @@ import { BuildspaceError } from "@buildspacestudio/sdk";
 | Field | Type | Description |
 |-------|------|-------------|
 | `code` | `string` | Service-scoped error code |
-| `service` | `"auth" \| "events" \| "storage" \| "notifications"` | Which service threw |
+| `service` | `"auth" \| "events" \| "storage" \| "notifications" \| "billing"` | Which service threw |
 | `status` | `number` | HTTP status code |
 | `message` | `string` | Human-readable description |
 

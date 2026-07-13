@@ -1,86 +1,50 @@
 # Server Actions with next-safe-action
 
-## Setup
+Already set up in this project — extend the existing clients, don't recreate them.
 
-Install dependencies:
+## Action clients (`lib/safe-action.ts`)
 
-```bash
-npm install next-safe-action zod
-# or: pnpm add next-safe-action zod | bun add next-safe-action zod
-```
+Three authorization tiers, stacked as middleware:
 
-Create `lib/safe-action.ts`:
+| Client | Guarantees | ctx |
+|--------|-----------|-----|
+| `actionClient` | nothing (public forms) | — |
+| `authActionClient` | valid session | `ctx.session` (`user`, `token`) |
+| `adminActionClient` | session + local `super_admin` role | `ctx.session`, `ctx.user` (local record) |
 
-```ts
-import { createSafeActionClient } from "next-safe-action";
-import { getSession } from "@/lib/auth";
+To add a new tier (e.g. an "owner" check), copy the `adminActionClient` shape: extend the previous tier with `.use()` and throw when the check fails.
 
-export const actionClient = createSafeActionClient();
+## Working examples in-repo
 
-export const authActionClient = actionClient.use(async ({ next }) => {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
-  return next({ ctx: { session } });
-});
-```
+| Pattern | File |
+|---------|------|
+| CRUD actions with zod + `revalidatePath` | `app/dashboard/todos/actions.ts` |
+| Read-modify-write on the users table | `app/dashboard/settings/actions.ts` |
+| Admin-gated action (`adminActionClient`) | `app/dashboard/admin/actions.ts` |
+| SDK call inside an action (signed URL, delete) | `app/dashboard/files/actions.ts` |
+| Action returning a redirect URL (checkout) | `app/dashboard/billing/actions.ts` |
 
-- `actionClient` — no auth required (public forms)
-- `authActionClient` — validates session, injects `ctx.session` (with `user` and `token`)
+Conventions these files follow:
 
-## Authenticated action pattern
-
-```ts
-"use server";
-
-import { z } from "zod";
-import { authActionClient } from "@/lib/safe-action";
-import { getServerClient } from "@/lib/buildspace";
-
-export const updateProfile = authActionClient
-  .inputSchema(
-    z.object({
-      name: z.string().min(1).max(100),
-    }),
-  )
-  .action(async ({ parsedInput, ctx }) => {
-    const bs = getServerClient();
-    bs.setSession(ctx.session.token);
-    // ... SDK calls scoped to authenticated user ...
-    bs.clearSession();
-    return { success: true };
-  });
-```
+- `"use server"` at the top of a colocated `actions.ts` inside the slice folder
+- `.inputSchema(z.object({ ... }))` on every action that takes input
+- Scope every query by the caller: `eq(table.userId, ctx.session.user.id)` — never trust an id from the client alone
+- `revalidatePath("/dashboard/<slice>")` after mutations so the server component re-renders
 
 ## Client usage with useAction
+
+`app/dashboard/todos/todo-form.tsx` is the canonical example:
 
 ```tsx
 "use client";
 import { useAction } from "next-safe-action/hooks";
-import { updateProfile } from "@/app/actions/example";
+import { toast } from "sonner";
+import { createTodo } from "./actions";
 
-export function ProfileForm() {
-  const { execute, isExecuting, result } = useAction(updateProfile, {
-    onSuccess: ({ data }) => {
-      // handle success
-    },
-    onError: ({ error }) => {
-      // handle validation or server errors
-    },
-  });
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        execute({ name: "Jane" });
-      }}
-    >
-      <input name="name" />
-      <button type="submit" disabled={isExecuting}>
-        {isExecuting ? "Saving..." : "Save"}
-      </button>
-      {result.validationErrors && <p>Check your input</p>}
-    </form>
-  );
-}
+const { execute, isPending } = useAction(createTodo, {
+  onSuccess: () => toast.success("Todo added"),
+  onError: ({ error }) => toast.error(error.serverError ?? "Failed to add todo"),
+});
 ```
+
+Always pair `onSuccess`/`onError` with toasts, and disable the submit control on `isPending`.
