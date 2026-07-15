@@ -84,6 +84,28 @@ buildspace deploy status --env prod   # shows the prod URL and status
 
 If the rollout fails, inspect it with `buildspace deploy logs --env prod --latest`.
 
+## Build configuration (`railway.json`)
+
+How the app builds and runs is controlled by the `railway.json` at the repo root — not by any platform setting. The starter uses Railway's `RAILPACK` builder (zero-config for Bun + Next.js), a `preDeployCommand` that runs Drizzle migrations, and a `/api/health` healthcheck. Keep Railpack unless you need system packages.
+
+### System packages → use a Dockerfile
+
+Switch to a Dockerfile only when the app needs OS-level packages Railpack can't install (`ffmpeg`, Chromium/Playwright, ImageMagick, fonts):
+
+1. Rename the starter's `Dockerfile.example` to `Dockerfile` and add packages in the runtime stage.
+2. Point `railway.json` at it:
+
+```json
+"build": { "builder": "DOCKERFILE" }
+```
+
+The `deploy` block is builder-independent — migrations, start command, and healthcheck keep working. Two gotchas when moving off Railpack:
+
+- `NEXT_PUBLIC_*` vars are inlined at **build** time — pass them as Docker build args (`ARG` in the Dockerfile).
+- Server secrets are runtime-only — build with `SKIP_ENV_VALIDATION=1` (the starter's `lib/env.ts` honors it) so `next build` doesn't fail validating them.
+
+Full reference: `https://docs.buildspace.studio/docs/hosting/build-config`.
+
 ## Environment variables
 
 Manage env vars for your app's dev and prod environments. Requires authentication.
