@@ -142,6 +142,36 @@ buildspace env pull [--env dev|prod] [--output .env.local]
 
 Writes non-secret variable keys and masked previews to `.env.local` (or the `--output` path). Useful for bootstrapping a local dev environment with the correct key names.
 
+## Standalone databases
+
+`buildspace db` manages SQLite databases owned by your organization rather than by a project — useful for scratch data, prototypes, or data shared across projects. They are separate from the per-environment database each project already gets.
+
+```bash
+buildspace db list                                  # list databases + quota usage
+buildspace db create "Scratch data"                 # prints the connection URL + token ONCE
+buildspace db show scratch-data                     # usage + token inventory
+buildspace db delete scratch-data --yes             # destroys the database and its data
+```
+
+Run SQL server-side (read-only unless `--write` is passed):
+
+```bash
+buildspace db shell scratch-data --sql "select count(*) from users"
+buildspace db shell scratch-data --write --sql "delete from sessions"
+cat migration.sql | buildspace db shell scratch-data --write
+```
+
+Tokens are per-database; mint one per consumer so you can revoke narrowly:
+
+```bash
+buildspace db token create scratch-data --label analytics --read-only
+buildspace db token revoke scratch-data <tokenId>
+```
+
+Every subcommand accepts the database slug or its UUID, and supports `--json`. Connect from code with `@libsql/client` using the printed URL plus the token in an env var — never hardcode the token.
+
+Full reference: `https://docs.buildspace.studio/docs/database/standalone-databases`.
+
 ## Config
 
 Set the API base URL and git base URL:

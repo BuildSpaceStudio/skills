@@ -82,3 +82,24 @@ export async function GET(request: NextRequest) {
 - `file:local.db` fallback enables local development without a remote Turso connection
 - Migrations run automatically on deploy via `railway.json`'s `preDeployCommand`
 - Token rotation is available from the Data tab in Creator Studio
+
+## Standalone (non-project) databases
+
+Beyond the per-environment database this project gets, Buildspace can provision **standalone** SQLite databases owned by your organization — for scratch data, prototypes, or data shared across projects. They are not wired into any project's env vars automatically.
+
+```bash
+buildspace db create "Scratch data"    # prints the connection URL + token ONCE
+buildspace db list
+buildspace db shell scratch-data --sql "select count(*) from users"
+```
+
+Connect the same way as the project database — the URL and token just come from `buildspace db create` instead of being injected:
+
+```ts
+const client = createClient({
+  url: process.env.SCRATCH_DB_URL!,
+  authToken: process.env.SCRATCH_DB_TOKEN!,
+});
+```
+
+Creator Studio has a console for these (schema tree, row editor, SQL runner, and a schema-aware AI SQL helper) under **Databases**. Full reference: `https://docs.buildspace.studio/docs/database/standalone-databases`.
