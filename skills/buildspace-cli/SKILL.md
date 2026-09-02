@@ -172,6 +172,29 @@ Every subcommand accepts the database slug or its UUID, and supports `--json`. C
 
 Full reference: `https://docs.buildspace.studio/docs/database/standalone-databases`.
 
+## Pages
+
+`buildspace pages` publishes a single HTML file to a hosted, gated URL under your creator handle — no project, build, or deploy required. Buildspace stores and serves the file as-is; it never generates, rewrites, or executes it.
+
+```bash
+buildspace pages publish index.html                              # first run prompts you to claim a handle
+buildspace pages publish report.html --visibility login --open   # public | login | org | private (default: private)
+```
+
+Publishing is idempotent by content — republishing unchanged bytes reports `already published (vN)` instead of creating a new version, so it's safe from CI or a watch script. A publish is blocked if the file appears to contain a credential (`--allow-secrets` overrides).
+
+```bash
+buildspace pages list                        # your pages, visibility, version, size, views, quota
+buildspace pages open my-report              # open the hosted URL in a browser
+buildspace pages versions my-report          # every immutable version
+buildspace pages rollback my-report --version 2   # pointer flip, not a rewrite
+buildspace pages visibility my-report public
+buildspace pages delete my-report --yes
+buildspace pages handle [<handle>]           # show or claim your creator handle
+```
+
+Every subcommand supports `--json`. Full reference: `https://docs.buildspace.studio/docs/cli/pages`.
+
 ## Config
 
 Set the API base URL and git base URL:
