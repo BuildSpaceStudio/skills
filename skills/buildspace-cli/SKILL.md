@@ -42,18 +42,25 @@ Clone a BuildSpace app repo by slug:
 buildspace init <slug>
 ```
 
-## Deploy (dev)
+## Ship to dev
 
-Push the current HEAD to the dev branch (`buildspace/dev`) — the branch the hosted dev environment serves — and sync the hosted dev workspace:
+`buildspace deploy` is read-only (status/history/logs) — it does not ship code. Push, then sync the hosted dev workspace so the running preview actually picks up the change:
 
 ```bash
-buildspace deploy            # push + sync dev
-buildspace deploy --wait     # also wait for the deployment to finish (non-zero exit on failure)
+git push                # ships your commit to the tracked dev branch
+buildspace agent reset  # pulls it into the running dev preview
+```
+
+**Both steps matter.** The hosted dev workspace keeps a writable, volume-backed git checkout so edits made directly in the browser survive restarts — which means a `git push` alone updates the repo but not what's currently running. `buildspace agent reset` discards any uncommitted changes in the live workspace and resets its checkout to the latest commit on the tracked branch. If you're not sure whether the workspace has in-browser changes worth keeping, check first:
+
+```bash
+buildspace agent inspect   # shows clean/dirty + changed files
+buildspace agent accept    # commits the workspace's changes back to git instead of discarding them
 ```
 
 The app slug is auto-detected from the git remote origin (format: `<gitBaseUrl>/<slug>.git`). Override with `--app <slug>`.
 
-If the push is rejected, the remote dev branch has commits you don't have (often from the hosted workspace agent) — run `git fetch origin buildspace/dev && git rebase origin/buildspace/dev` and deploy again.
+If the push is rejected, the remote dev branch has commits you don't have (often from `buildspace agent accept`) — run `git fetch origin <branch> && git rebase origin/<branch>` and push again.
 
 ### Deployment status and logs
 
@@ -62,7 +69,7 @@ buildspace deploy status                       # View deployment status for dev/
 buildspace deploy logs --env dev --latest       # View latest dev deployment logs
 ```
 
-All deploys go to the **dev** environment. Production only changes via `buildspace promote` (below).
+All dev work happens in the **dev** environment. Production only changes via `buildspace promote` (below).
 
 ## Ship to production
 
@@ -225,7 +232,8 @@ npm install && npm run dev
 ```bash
 npm run build                    # or pnpm run build / bun run build — verify the build passes first
 git add . && git commit -m "feat: ..."
-buildspace deploy --wait         # pushes HEAD to buildspace/dev and waits for the deployment
+git push                         # ships the commit to the tracked dev branch
+buildspace agent reset --yes     # sync it into the running dev preview (--yes for non-interactive)
 ```
 
 ### Ship to production
