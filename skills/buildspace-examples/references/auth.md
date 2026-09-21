@@ -14,6 +14,8 @@ All of these patterns are already implemented in this project. Point at the real
 | OAuth callback + first-sign-in side effects | `app/api/auth/callback/route.ts` |
 | Session check / logout API routes | `app/api/auth/session/route.ts`, `app/api/auth/logout/route.ts` |
 | Route-level protection for `/dashboard/*` | `proxy.ts` |
+| Route-handler auth wrappers | `lib/api-auth.ts` → `withAuth()`, `withAdmin()` |
+| Allowlist of deliberately public routes | `test/public-routes.ts` |
 | Auth-aware header (sign in/out, user menu) | `components/site-header.tsx` |
 
 ## AuthProvider + useAuth hook
@@ -54,20 +56,32 @@ The `users` table mirrors BuildSpace identity: `app/api/auth/callback/route.ts` 
 
 ## Protected API route pattern
 
-Use when an API route (streaming, webhooks, external callers) requires authentication:
+**`proxy.ts` does not cover `app/api/`** — its matcher is `/dashboard/:path*`. A new route handler is reachable by anyone on the internet until it checks the session itself, which is the easiest way to ship an open endpoint over your own database. `test/guardrails.test.ts` fails the build for any route that is neither wrapped nor allowlisted.
+
+Wrap it (see `app/api/me/route.ts` for the live example):
 
 ```ts
-import { type NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getServerClient } from "@/lib/buildspace";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
+
+export const GET = withAuth(async (_request, { session }) => {
+  return NextResponse.json({ id: session.user.id });
+});
+```
+
+`withAdmin()` is the same, additionally requiring `role === "super_admin"` and injecting `user`. Read the caller off `session` — never off a body field or query param the caller controls.
+
+A route that really is public (webhook, health check, OAuth callback) goes in `test/public-routes.ts` with a reason string explaining why it's safe.
+
+Longer form, when you need the SDK scoped to the caller:
+
+```ts
+import { NextResponse } from "next/server";
 import { BuildspaceError } from "@buildspacestudio/sdk";
+import { withAuth } from "@/lib/api-auth";
+import { getServerClient } from "@/lib/buildspace";
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const POST = withAuth(async (request, { session }) => {
   try {
     const bs = getServerClient();
     bs.setSession(session.token);
@@ -76,18 +90,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err) {
     if (err instanceof BuildspaceError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.status },
-      );
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
     }
     throw err;
   }
-}
+});
 ```
 
 Key points:
-- Call `getSession()` first and return 401 if null
+- Wrap the handler in `withAuth()`/`withAdmin()` — it returns the 401/403 for you
 - Use `bs.setSession(token)` to scope SDK operations to the authenticated user
 - Always call `bs.clearSession()` after (the server client is a singleton)
 - Catch `BuildspaceError` and return structured JSON with the error code and HTTP status

@@ -12,9 +12,11 @@ Preferred patterns for building with the BuildSpace SDK. **Projects created from
 - Next.js 16 App Router, TypeScript, Tailwind CSS
 - Features are vertical slices under `app/dashboard/<slice>/` — see the [new-feature playbook](references/new-feature-playbook.md)
 - `getSession()` / `getCurrentUser()` from `lib/auth.ts` for all server-side auth checks
+- `withAuth()` / `withAdmin()` from `lib/api-auth.ts` for every route handler — `proxy.ts` does NOT cover `app/api/`
 - `getServerClient()` for server-side SDK access, `getBrowserClient()` for client-side
 - Action tiers in `lib/safe-action.ts`: `actionClient` → `authActionClient` → `adminActionClient`
-- Platform helpers live in `lib/`: `analytics.ts`, `email.ts`, `billing.ts` — go through them, they encode graceful degradation
+- Platform helpers live in `lib/`: `analytics.ts`, `email.ts`, `billing.ts`, `log.ts` — go through them, they encode graceful degradation and secret redaction
+- User-owned queries go through `scopedTo(userId)` from `lib/db/scoped.ts`; app code never touches `db` directly
 - Prefer **server actions** for mutations; use **API routes** for streaming, webhooks, and OAuth callbacks
 - Use `proxy.ts` (Next.js 16) for route-level protection — NOT `middleware.ts`
 - Catch `BuildspaceError` in server-side code and degrade gracefully (empty state, logged error) — a missing backing service must never crash a page
@@ -26,7 +28,7 @@ Read the reference file matching the feature being built:
 
 ### Adding any new feature
 
-The vertical-slice checklist: schema → migration → actions → page → nav → event → verify.
+The vertical-slice checklist: schema → migration → actions → page → nav → event → verify, plus the guardrails that `bun run verify` enforces.
 
 See [references/new-feature-playbook.md](references/new-feature-playbook.md).
 
