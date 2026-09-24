@@ -91,6 +91,20 @@ buildspace deploy status --env prod   # shows the prod URL and status
 
 If the rollout fails, inspect it with `buildspace deploy logs --env prod --latest`.
 
+### Database migrations on promote
+
+Every promote runs the `preDeployCommand` from `railway.json` (the starter's is `bun run db:migrate`) against the production database **before** the new release starts. If it fails, the new release never starts and the previous one keeps serving. `promote --watch` and `deploy status --env prod` print the result:
+
+```
+Migrations: ran before start (`bun run db:migrate`)
+```
+
+- `Migrations: FAILED` — exit code 1. The output includes the last log lines and a `Fix:` line. Reproduce locally (`bun run db:migrate`), fix the migration (never edit an already-applied migration — add a new one with `bun db:generate`), commit, push, promote again.
+- `Migrations: NOT RUN (no pre-deploy command)` — the rollout succeeded but the database wasn't migrated. Add `"preDeployCommand": ["bun run db:migrate"]` under `deploy` in `railway.json`, then promote again.
+- `Migrations: could not be confirmed` — check `buildspace deploy logs --env prod --latest` before assuming the schema is current.
+
+With `--json`, the same report is under `migrations` (`status`: `passed` | `failed` | `not_configured` | `unknown`).
+
 ## Build configuration (`railway.json`)
 
 How the app builds and runs is controlled by the `railway.json` at the repo root — not by any platform setting. The starter uses Railway's `RAILPACK` builder (zero-config for Bun + Next.js), a `preDeployCommand` that runs Drizzle migrations, and a `/api/health` healthcheck. Keep Railpack unless you need system packages.
