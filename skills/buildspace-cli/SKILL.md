@@ -81,7 +81,7 @@ buildspace promote --latest --yes --watch
 
 - `--latest` promotes the current dev branch head (no deployment id needed). Alternatively pass `--deployment <id>` from `buildspace deploy history --env dev`.
 - `--yes` skips the interactive confirmation — **required in non-interactive/agent sessions** (without it, a headless run fails fast instead of hanging).
-- `--watch` follows the rollout to a terminal state, prints the production URL on success, and exits non-zero if the rollout fails.
+- `--watch` follows the rollout to a terminal state, prints the production URL on success, and exits non-zero if the rollout fails. It stops watching after 10 minutes by default (`--timeout <minutes>`, max 60) and exits `2`: the rollout keeps going, so check `buildspace deploy status --env prod` instead of promoting again.
 
 After a successful rollout, verify the app responds (the starter guarantees `GET /api/health`):
 
