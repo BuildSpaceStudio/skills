@@ -123,13 +123,36 @@ await bs.events.batchTrack([
 
 ## Storage
 
-**Browser**:
+Access model: secret-key (server) calls bypass path rules (size/type limits still apply). Publishable-key calls act as the session user (`setSession`) or, without one, can only read `public` paths. Deleting always needs the secret key.
+
+**Browser uploads in Next.js** — the `bs_session` cookie is `HttpOnly`, so the browser goes through your route:
 
 ```ts
-const { key, url } = await bs.storage.upload(file, { path: "avatars/pic.png" });
-const { url } = await bs.storage.getUrl("avatars/pic.png");
-const { objects } = await bs.storage.list("avatars/");
-await bs.storage.delete("avatars/pic.png");
+// app/api/upload/route.ts
+import { createUploadRoute } from "@buildspacestudio/sdk/next";
+export const POST = createUploadRoute(getServerClient(), {
+  allowedContentTypes: ["image/*"],
+  maxSize: 5 * 1024 * 1024,
+  keyFor: ({ session }) => `avatars/${session.user.id}/${crypto.randomUUID()}`, // default: uploads/{userId}/{uuid}-{name}
+  onUploadComplete: ({ session, key }) => saveAvatarKey(session.user.id, key),
+});
+```
+
+```tsx
+// client component
+import { useUpload } from "@buildspacestudio/sdk/react";
+const { upload, isUploading, progress, error } = useUpload({ endpoint: "/api/upload" });
+const { key } = await upload(file);
+```
+
+Need to inspect/transform bytes first (strip EXIF, reject SVG)? Post the file to your own route, process it, then use the server flow below.
+
+**Browser with a session token** (non-Next, or after `bs.setSession(token)`):
+
+```ts
+const { key, url } = await bs.storage.upload(file, { path: "uploads/pic.png", onProgress });
+const { url } = await bs.storage.getUrl("uploads/pic.png");
+const { objects } = await bs.storage.list("uploads/"); // only objects the caller may read
 ```
 
 **Server**:
@@ -138,13 +161,18 @@ await bs.storage.delete("avatars/pic.png");
 const { upload_url, key } = await bs.storage.getUploadUrl({
   key: "reports/q4.pdf",
   contentType: "application/pdf",
-  size: fileBytes,
+  size: bytes.byteLength, // the URL only accepts exactly this size and type
+  userId, // optional: record the end user as uploader
 });
+await fetch(upload_url, { method: "PUT", headers: { "Content-Type": "application/pdf" }, body: bytes });
+await bs.storage.completeUpload(key); // confirms size; pending uploads don't list or count toward usage
 const { url } = await bs.storage.getSignedUrl("reports/q4.pdf", { expiresIn: 3600 });
 const { objects } = await bs.storage.list("reports/", { limit: 50, offset: 0 });
 await bs.storage.delete("reports/q4.pdf");
 const usage = await bs.storage.getUsage();
 ```
+
+Store storage keys, not signed URLs (they expire). Serve images on cached/public pages through your own route that mints a short-lived signed URL.
 
 ## Notifications (server only)
 

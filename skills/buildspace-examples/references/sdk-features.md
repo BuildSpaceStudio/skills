@@ -31,7 +31,7 @@ getBrowserClient().events.track("button_clicked", { page: "pricing" });
 
 | Pattern | Lives at |
 |---------|----------|
-| Browser-direct upload | `app/dashboard/files/file-uploader.tsx` (`bs.storage.upload`) |
+| Browser upload | Prefer `createUploadRoute` + `useUpload` (see the buildspace-sdk skill). `app/dashboard/files/file-uploader.tsx` still uses `bs.storage.upload`, which only works when the client has a session token. |
 | Server-side listing scoped to a prefix | `app/dashboard/files/page.tsx` (`bs.storage.list`) |
 | Server-signed download URL via action | `app/dashboard/files/actions.ts` (`getSignedUrl`, 5-min expiry) |
 | Delete with ownership check | `app/dashboard/files/actions.ts` (`deleteFile`) |

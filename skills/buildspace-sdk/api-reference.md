@@ -150,14 +150,30 @@ Returns: `{ count: number, event_ids: string[] }`
 
 Available via `bs.storage` on the browser client.
 
-### `upload(file, options?)`
+Publishable-key calls act as the session user (`setSession`); without a session only `public` paths are readable. In Next.js prefer `createUploadRoute` + `useUpload` (below).
+
+### `upload(file, options)`
+
+Signed URL → PUT → `completeUpload` → download URL. Needs a session.
 
 | Param | Type | Required |
 |-------|------|----------|
-| `file` | `File` | yes |
-| `options.path` | `string` | no |
+| `file` | `File \| Blob` | yes |
+| `options.path` | `string` | yes |
+| `options.contentType` | `string` | no |
+| `options.onProgress` | `({ loaded, total }) => void` | no |
 
 Returns: `{ key: string, url: string, size: number }`
+
+### `uploadToSignedUrl(file, options)`
+
+PUT to a URL your server minted. `options.uploadUrl` (required), `options.contentType` (must match the signed type), `options.onProgress`.
+
+Returns: `void`
+
+### `completeUpload(key)`
+
+Returns: `{ key: string, size: number, contentType: string }`
 
 ### `getUrl(key)`
 
@@ -169,7 +185,21 @@ Returns: `{ objects: Array<{ key, size, lastModified }> }`
 
 ### `delete(key)`
 
-Returns: `void`
+Deprecated: needs a secret key, so it fails from the browser. Delete on the server.
+
+## Storage — Next.js upload route + React hook
+
+`createUploadRoute(client, options?)` from `@buildspacestudio/sdk/next` returns a `POST` handler. Requires a session cookie; the server picks the key.
+
+| Option | Type | Purpose |
+|--------|------|---------|
+| `allowedContentTypes` | `string[]` | e.g. `["image/*"]`; 415 otherwise |
+| `maxSize` | `number` | bytes; 413 otherwise |
+| `authorize` | `({ session, file, request }) => boolean` | `false` → 403 |
+| `keyFor` | `({ session, file }) => string` | default `uploads/{userId}/{uuid}-{filename}` |
+| `onUploadComplete` | `({ session, key, size, contentType, request }) => data` | return value sent to the browser |
+
+`useUpload({ endpoint? })` from `@buildspacestudio/sdk/react` (default endpoint `/api/upload`) returns `{ upload(file, { contentType? }), isUploading, progress, error, reset }`. `upload` resolves `{ key, size, contentType, data }`.
 
 ## Storage — server methods
 
@@ -184,8 +214,17 @@ Generate a presigned upload URL.
 | `options.key` | `string` | yes |
 | `options.contentType` | `string` | yes |
 | `options.size` | `number` | yes |
+| `options.userId` | `string` | no |
+
+The URL only accepts a PUT with exactly this `Content-Type` and size. The object stays pending until `completeUpload`.
 
 Returns: `{ upload_url: string, key: string, expires_in: number }`
+
+### `completeUpload(key, options?)`
+
+Confirm an upload after the PUT. `options.userId` must match the `userId` the URL was issued for.
+
+Returns: `{ key: string, size: number, contentType: string }`
 
 ### `getSignedUrl(key, options?)`
 
@@ -195,6 +234,7 @@ Generate a temporary signed download URL.
 |-------|------|----------|
 | `key` | `string` | yes |
 | `options.expiresIn` | `number` | no |
+| `options.userId` | `string` | no |
 
 Returns: `{ url: string, expiresIn: number }`
 
