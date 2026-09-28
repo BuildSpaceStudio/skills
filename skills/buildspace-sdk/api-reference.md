@@ -99,6 +99,16 @@ Returns: `{ user: { id, email, name }, appId: string }` or `null`.
 
 Revokes a session token. Returns `void`.
 
+### `getTermsStatus(token)`
+
+Returns the app's Terms/Privacy URLs (set in Studio → Login branding) and whether this user accepted the current Terms version. Sign-in through the Buildspace login page records acceptance automatically.
+
+Returns: `{ termsUrl, privacyUrl, termsVersion, acceptedVersion, acceptedAt, needsAcceptance }`.
+
+### `acceptTerms({ sessionToken, version })`
+
+Records acceptance of the current Terms version (e.g. after re-prompting). `version` must equal the current `termsVersion` or it throws a 409. Idempotent. Returns the updated terms status.
+
 ### `setSession(token)` / `clearSession()`
 
 Attach or detach a user session for subsequent SDK calls.
