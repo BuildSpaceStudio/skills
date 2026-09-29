@@ -6,6 +6,8 @@
 - [Configuration options](#configuration-options)
 - [Auth — client methods](#auth--client-methods)
 - [Auth — server methods](#auth--server-methods)
+- [Auth — Next.js adapter](#auth--nextjs-adapter-buildspacestudiosdknext)
+- [Auth — React bindings](#auth--react-bindings-buildspacestudiosdkreact)
 - [Events — client methods](#events--client-methods)
 - [Events — server methods](#events--server-methods)
 - [Storage — client methods](#storage--client-methods)
@@ -112,6 +114,31 @@ Records acceptance of the current Terms version (e.g. after re-prompting). `vers
 ### `setSession(token)` / `clearSession()`
 
 Attach or detach a user session for subsequent SDK calls.
+
+## Auth — Next.js adapter (`@buildspacestudio/sdk/next`)
+
+| Export | Signature / purpose |
+|--------|---------------------|
+| `createAuthCallback(client, { redirectTo?, onSignIn?, onError?, cookie? })` | `GET` handler: exchanges `?code=`, runs `onSignIn({ accessToken, request, user })` (failures logged, never block login), sets `bs_session`, 303 to `redirectTo` (default `/`) |
+| `createLogoutRoute(client, { cookie? })` | `POST` handler: revokes the session, clears the cookie, returns `{ ok: true }` |
+| `createSessionRoute(client)` | `GET` handler: returns `{ session: { appId, user } | null }` (token omitted) |
+| `getSession(client, source)` | `source` is a `Request` or `await cookies()`; returns `{ ...session, token }` or `null` (network errors also → `null`) |
+| `requireSession(client, source)` | Same, but throws `BuildspaceError` 401 `auth/session-required` |
+| `createSessionCookieGuard({ redirectTo? })` | Middleware presence check; 307 to `redirectTo` when no cookie |
+| `buildSessionCookie` / `buildClearSessionCookie` / `getSessionToken` / `SESSION_COOKIE_NAME` | Low-level cookie helpers |
+
+## Auth — React bindings (`@buildspacestudio/sdk/react`)
+
+Requires `react >= 19`; ships a `"use client"` banner.
+
+| Export | Purpose |
+|--------|---------|
+| `<BuildspaceProvider client initialUser? callbackPath? logoutPath? signedOutRedirect?>` | Defaults: `/api/auth/callback`, `/api/auth/logout`, `/` |
+| `useAuth()` | `{ user, loading, signIn, signUp, signOut }` |
+| `useSession()` | `{ user, loading }` |
+| `useBuildspaceClient()` | The client instance (throws outside the provider) |
+| `useTrack()` | `(event, properties?) => void`, bound to the signed-in user, never throws |
+| `useUpload({ endpoint? })` | See Storage below |
 
 ## Events — client methods
 

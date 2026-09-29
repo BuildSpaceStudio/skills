@@ -1,15 +1,15 @@
 ---
 name: buildspace-cli
-description: Reference for the BuildSpace CLI. Use when deploying apps, managing environment variables, authenticating with BuildSpace, or initializing new projects from the command line.
+description: Reference for the BuildSpace CLI. Use when deploying or promoting apps, managing environment variables, domains, billing, or the dev preview, reading app analytics and reports, authenticating with BuildSpace, or initializing new projects from the command line.
 ---
 
 # BuildSpace CLI
 
-Command-line interface for managing BuildSpace apps — authentication, deployment, and environment variables.
+Command-line interface for managing BuildSpace apps — authentication, deployment, environment variables, domains, billing, and app analytics.
 
 ## Authentication
 
-A stored credential is required for `deploy` and `env` commands. Two methods:
+A stored credential is required for every API command (`app`, `deploy`, `env`, ...). Three methods:
 
 ### Browser login (recommended)
 
@@ -27,16 +27,35 @@ buildspace auth set
 
 Prompts for a personal access token to store locally.
 
+### Environment token (agents, CI)
+
+```bash
+BUILDSPACE_TOKEN=bs_pat_... buildspace whoami --json   # verify auth, no local state needed
+```
+
+`BUILDSPACE_TOKEN` takes priority over the saved config file.
+
 ### Other auth commands
 
 ```bash
-buildspace auth show    # Display the current stored token
-buildspace auth clear   # Remove the stored credential
+buildspace whoami [--json]        # Show the authenticated identity (alias: auth status)
+buildspace auth show              # Display the current stored token
+buildspace auth clear             # Remove the stored credential
+buildspace auth setup-git         # Let plain `git push`/`git pull` use your token in an existing clone
 ```
+
+## Diagnose and update
+
+```bash
+buildspace doctor [--json]            # version, install method, auth, API reachability, git remote; exits 1 on failure
+buildspace update [--check] [--json]  # self-update (auto-detects npm/pnpm/bun); --check only reports
+```
+
+If a command fails with `CLI_OUTDATED` (HTTP 426), run `buildspace update` and retry.
 
 ## Init
 
-Clone a BuildSpace app repo by slug:
+Clone a BuildSpace app repo by slug, configure git so plain `git push` works, and pull `.env.local`:
 
 ```bash
 buildspace init <slug>
@@ -127,6 +146,63 @@ The `deploy` block is builder-independent — migrations, start command, and hea
 
 Full reference: `https://docs.buildspace.studio/docs/hosting/build-config`.
 
+## App management
+
+```bash
+buildspace app list [--json]                  # your apps, active one marked
+buildspace app create --name "My App" --json  # returns slug, environments, keys, provisioningSession
+buildspace app use <slug>                     # set the default app
+buildspace app status [--json]                # hosting, dev preview sleep state, Terms & Privacy checklist (`legal`)
+buildspace app hosting <status|enable|disable> [--env dev|prod]
+buildspace app delete <slug> --confirm <slug>
+```
+
+### Dev preview sleep and wake
+
+The hosted dev preview sleeps when idle (`app status` shows it). Wake it before relying on the preview URL:
+
+```bash
+buildspace app wake [--no-wait] [--json]   # blocks until reachable unless --no-wait
+buildspace app sleep [--json]              # sleep now instead of waiting to idle out
+```
+
+### Billing
+
+```bash
+buildspace app billing status [--env dev|prod] [--json]
+buildspace app billing enable --env dev                   # requires Stripe Connect first (Studio Settings)
+buildspace app billing overview [--json]                  # Stripe connection, readiness checklist, counts, recent activity
+buildspace app billing products [--all] [--env dev|prod]  # products with their prices and ids
+buildspace app billing products create --name "Pro" --amount 9.99 --interval month [--lookup-key pro-monthly]
+buildspace app billing products create --name "Credits" --amount-cents 500 --type one_time
+buildspace app billing products archive <id|name>         # archives the product and deactivates its prices
+buildspace app billing prices [--all]                     # flat price list
+buildspace app billing prices deactivate <priceId>        # or: activate
+buildspace app billing sync                               # copy dev products/prices into prod
+```
+
+`products create` makes the product and its first price together. `--amount` is in major units (`9.99`); use `--amount-cents` for zero-decimal currencies like JPY. Recurring products need `--interval day|week|month|year`. Set `--lookup-key` so app code can start checkout with `createCheckout({ lookupKey })` instead of hardcoding a price id. All catalog commands accept `--app <slug>`, `--env dev|prod` (default dev) and `--json`.
+
+**Set up billing end to end (agents):**
+
+1. `buildspace app billing overview --json` — confirm `stripe.test` is connected (the creator connects Stripe in Studio Settings; the CLI cannot do that step).
+2. `buildspace app billing enable --env dev` if `environments[].enabled` is false.
+3. `buildspace app billing products create ... --json` for each plan, then `buildspace app billing products --json` to verify.
+4. When ready for production: connect live Stripe, `buildspace app billing enable --env prod`, then `buildspace app billing sync`. Check `readiness.checks` in `overview --json` for anything still missing.
+
+### Analytics and reports
+
+Read-only; each command accepts `--app <slug>` and `--json`. Use these to see how an app is doing and to feed data to an AI summary:
+
+```bash
+buildspace app insights [--days 30]             # event totals, unique actors, top events
+buildspace app emails [--days 30] [--limit 10]  # sent, delivery/open/click rates, recent sends
+buildspace app users                            # users and last logins
+buildspace app report [--days 30] --json        # insights + emails + users + billing in one snapshot
+```
+
+`--days` is 1–365 (default 30). In `report`, each section is `{ data }` or `{ error }`, so one failing section doesn't hide the rest. For deployments use `buildspace deploy status|history|logs`.
+
 ## Environment variables
 
 Manage env vars for your app's dev and prod environments. Requires authentication.
@@ -161,7 +237,7 @@ Removes a custom env var. System-managed vars cannot be removed.
 buildspace env pull [--env dev|prod] [--output .env.local]
 ```
 
-Writes non-secret variable keys and masked previews to `.env.local` (or the `--output` path). Useful for bootstrapping a local dev environment with the correct key names.
+Writes non-secret variables with their real values, plus the managed database credentials `BUILDSPACE_DB_URL` and `BUILDSPACE_DB_TOKEN`, to `.env.local` (or the `--output` path). Secret variables are not written — fill those in by hand.
 
 ## Custom domains
 

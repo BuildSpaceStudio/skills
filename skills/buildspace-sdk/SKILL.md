@@ -84,6 +84,22 @@ const session = await bs.auth.getSession(token);
 await bs.auth.revokeSession(token);
 ```
 
+### Next.js adapter and React bindings (recommended)
+
+`@buildspacestudio/sdk/next` and `/react` replace the hand-written routes and cookie code above. They standardize the `bs_session` cookie (name, flags, `expires_in` → `Max-Age`) and use web-standard `Request`/`Response`.
+
+```ts
+// app/api/auth/callback/route.ts
+import { createAuthCallback, createLogoutRoute, createSessionRoute } from "@buildspacestudio/sdk/next";
+export const GET = createAuthCallback(getServerClient(), { redirectTo: "/dashboard", onSignIn: async ({ user }) => upsertUser(user) });
+// app/api/auth/logout/route.ts   → export const POST = createLogoutRoute(getServerClient());
+// app/api/auth/session/route.ts  → export const GET = createSessionRoute(getServerClient());
+```
+
+- `getSession(client, await cookies())` → session (with `token`) or `null`; `requireSession(...)` throws a 401 `BuildspaceError`.
+- `createSessionCookieGuard({ redirectTo })` in `proxy.ts`/middleware is a presence check only — still validate with `getSession` in pages and handlers.
+- React (`react >= 19`, client boundary): `<BuildspaceProvider client={createClient(pubKey)} initialUser={user}>`, then `useAuth()` → `{ user, loading, signIn, signUp, signOut }`, `useSession()`, `useBuildspaceClient()`, and `useTrack()` (never throws).
+
 ### Session forwarding
 
 Attach a user session to scope subsequent SDK calls to that user:
