@@ -1,11 +1,11 @@
 ---
 name: buildspace-cli
-description: Reference for the BuildSpace CLI. Use when deploying or promoting apps, managing environment variables, domains, billing, or the dev preview, reading app analytics and reports, authenticating with BuildSpace, or initializing new projects from the command line.
+description: Reference for the BuildSpace CLI. Use when deploying or promoting apps, managing environment variables, domains, billing, login page branding, or the dev preview, reading app analytics and reports, authenticating with BuildSpace, or initializing new projects from the command line.
 ---
 
 # BuildSpace CLI
 
-Command-line interface for managing BuildSpace apps — authentication, deployment, environment variables, domains, billing, and app analytics.
+Command-line interface for managing BuildSpace apps — authentication, deployment, environment variables, domains, billing, login branding, and app analytics.
 
 ## Authentication
 
@@ -175,20 +175,51 @@ buildspace app billing overview [--json]                  # Stripe connection, r
 buildspace app billing products [--all] [--env dev|prod]  # products with their prices and ids
 buildspace app billing products create --name "Pro" --amount 9.99 --interval month [--lookup-key pro-monthly]
 buildspace app billing products create --name "Credits" --amount-cents 500 --type one_time
-buildspace app billing products archive <id|name>         # archives the product and deactivates its prices
+buildspace app billing products update <id|name> --name "Pro Plus" --description "..."   # or --clear-description
+buildspace app billing products archive <id|name>         # remove: archives the product and deactivates its prices
 buildspace app billing prices [--all]                     # flat price list
-buildspace app billing prices deactivate <priceId>        # or: activate
+buildspace app billing prices create --product <id|name> --amount 290 --interval year   # add another price
+buildspace app billing prices replace <priceId> --amount 39                             # change a price (see below)
+buildspace app billing prices deactivate <priceId>        # or: activate, remove
 buildspace app billing sync                               # copy dev products/prices into prod
 ```
 
 `products create` makes the product and its first price together. `--amount` is in major units (`9.99`); use `--amount-cents` for zero-decimal currencies like JPY. Recurring products need `--interval day|week|month|year`. Set `--lookup-key` so app code can start checkout with `createCheckout({ lookupKey })` instead of hardcoding a price id. All catalog commands accept `--app <slug>`, `--env dev|prod` (default dev) and `--json`.
 
+**Updating and removing:** products can be renamed or re-described in place. Stripe prices are immutable, so `prices replace` creates a new price that inherits everything you don't override (including the lookup key, which moves to the new price) and deactivates the old one; existing subscribers stay on the old price. Stripe doesn't allow deleting products or prices that have been used, so "remove" means archive/deactivate. Archived products can't get new prices; create a new product instead.
+
 **Set up billing end to end (agents):**
 
 1. `buildspace app billing overview --json` — confirm `stripe.test` is connected (the creator connects Stripe in Studio Settings; the CLI cannot do that step).
 2. `buildspace app billing enable --env dev` if `environments[].enabled` is false.
-3. `buildspace app billing products create ... --json` for each plan, then `buildspace app billing products --json` to verify.
+3. `buildspace app billing products create ... --json` for each plan, then `buildspace app billing products --json` to verify. Fix mistakes with `products update` / `prices replace` rather than recreating.
 4. When ready for production: connect live Stripe, `buildspace app billing enable --env prod`, then `buildspace app billing sync`. Check `readiness.checks` in `overview --json` for anything still missing.
+
+### Login branding
+
+Customize the hosted login page for an app. Edits go to a **draft**; nothing is live until `publish`. Every command accepts `--app <slug>` and `--json`.
+
+```bash
+buildspace app branding show                       # draft vs published, and the live login URLs
+buildspace app branding set --primary-color "#FF5A48" --headline "Welcome back" \
+  --subheadline "Sign in to continue" --button-label "Email me a code" \
+  --bullet "Fast" --bullet "Private" --heading-font "Fraunces" --style-preset clean --radius md
+buildspace app branding set --clear primary-color,bullets   # back to defaults for those fields
+buildspace app branding logo set ./logo.png                 # or an https:// URL; `logo remove`
+buildspace app branding favicon set ./favicon.png           # png, svg, or ico
+buildspace app branding design import ./design.md           # store design.md, extract suggestions
+buildspace app branding design apply                        # apply the suggestions to the draft
+buildspace app branding preview                             # 1-hour link that renders the DRAFT on the real login page
+buildspace app branding publish --yes                       # make the draft live
+buildspace app branding reset --yes                         # back to Buildspace defaults (draft and published)
+```
+
+- **Fields:** `--title --headline --subheadline --button-label --legal-addon`, colors `--primary-color --background-color --surface-color --text-color` (`#RRGGBB`), `--heading-font --body-font` (from a supported list; the error names the valid ones), `--style-preset buildspace|clean|minimal`, `--radius none|sm|md|lg`, up to 3 `--bullet` (max 40 chars), `--terms-url --privacy-url --terms-version` (https only).
+- **Images:** logo up to 512 KB (png, jpg, webp, svg), favicon up to 128 KB (png, svg, ico). An uploaded file wins over a pasted URL.
+- **Preview before publishing:** run `preview`, open the sign-in or sign-up link, and check it. The link is unlisted, expires after an hour, and only works for that app. The sign-up page shows "closed" when the dev environment's sign-up mode is closed.
+- `design import` uses AI to extract suggestions from a design doc. It never changes the draft until `design apply`.
+- `set` on a fresh draft starts from the published values, so changing one field doesn't blank the rest.
+- Branding applies to the whole project, not per environment.
 
 ### Analytics and reports
 
