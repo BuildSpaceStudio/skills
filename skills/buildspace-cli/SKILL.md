@@ -181,10 +181,12 @@ buildspace app billing prices [--all]                     # flat price list
 buildspace app billing prices create --product <id|name> --amount 290 --interval year   # add another price
 buildspace app billing prices replace <priceId> --amount 39                             # change a price (see below)
 buildspace app billing prices deactivate <priceId>        # or: activate, remove
-buildspace app billing sync                               # copy dev products/prices into prod
+buildspace app billing sync                               # copy dev products/prices into prod (no --env; prod billing must be enabled first)
 ```
 
 `products create` makes the product and its first price together. `--amount` is in major units (`9.99`); use `--amount-cents` for zero-decimal currencies like JPY. Recurring products need `--interval day|week|month|year`. Set `--lookup-key` so app code can start checkout with `createCheckout({ lookupKey })` instead of hardcoding a price id. All catalog commands accept `--app <slug>`, `--env dev|prod` (default dev) and `--json`.
+
+**Sync needs prod billing on:** `sync` only promotes the dev catalog to production, so it fails until live Stripe is connected and `buildspace app billing enable --env prod` has run. You don't need it to use or verify the dev catalog (`products --json`).
 
 **Updating and removing:** products can be renamed or re-described in place. Stripe prices are immutable, so `prices replace` creates a new price that inherits everything you don't override (including the lookup key, which moves to the new price) and deactivates the old one; existing subscribers stay on the old price. Stripe doesn't allow deleting products or prices that have been used, so "remove" means archive/deactivate. Archived products can't get new prices; create a new product instead.
 
