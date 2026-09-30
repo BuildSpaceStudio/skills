@@ -237,6 +237,18 @@ const { active } = await bs.billing.getEntitlements({ userId });
 
 Show a "Test mode" banner whenever `status.testMode` is true — payments use Stripe test cards. For the full recipe (pricing UI states, entitlement gating), see the [billing reference](../buildspace-examples/references/billing.md).
 
+**Promotion codes** (SDK >= 0.7.0). Create codes with `buildspace app billing promos create`, then choose per checkout — pass one or neither, never both:
+
+```ts
+// Customer types a code on Stripe's page. Subscription prices only.
+await bs.billing.createCheckout({ userId, lookupKey: "pro-monthly", allowPromotionCodes: true, successUrl, cancelUrl });
+
+// Your server applies a code (any price type). Server SDK only; decide who gets it before passing it.
+await bs.billing.createCheckout({ userId, lookupKey: "lifetime", promotionCode: "LAUNCH20", successUrl, cancelUrl });
+```
+
+`allowPromotionCodes` on a one-time price is rejected — collect the code in your own form and pass `promotionCode` from the server instead. Unknown, expired, or other-app codes fail with `Promotion code not found`; show that to the user rather than retrying without the code. See the [billing reference](../buildspace-examples/references/billing.md#promotion-codes) for recipes.
+
 ## Database
 
 Every Buildspace app gets a managed [Turso](https://turso.tech) (libSQL) database — one per environment (`dev` and `prod`). The database is **not** accessed through the Buildspace SDK; you connect directly using `@libsql/client` and optionally [Drizzle ORM](https://orm.drizzle.team).

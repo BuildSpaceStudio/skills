@@ -182,6 +182,10 @@ buildspace app billing prices create --product <id|name> --amount 290 --interval
 buildspace app billing prices replace <priceId> --amount 39                             # change a price (see below)
 buildspace app billing prices deactivate <priceId>        # or: activate, remove
 buildspace app billing sync                               # copy dev products/prices into prod (no --env; prod billing must be enabled first)
+buildspace app billing promos [--all]                     # this app's promotion codes (CLI >= 0.21.0)
+buildspace app billing promos create --code LAUNCH20 --percent-off 20 --max-redemptions 100 --expires 2026-12-31
+buildspace app billing promos create --code SAVE5 --amount-off 5 --duration repeating --months 3 --products Pro
+buildspace app billing promos deactivate LAUNCH20         # or: activate, remove
 ```
 
 `products create` makes the product and its first price together. `--amount` is in major units (`9.99`); use `--amount-cents` for zero-decimal currencies like JPY. Recurring products need `--interval day|week|month|year`. Set `--lookup-key` so app code can start checkout with `createCheckout({ lookupKey })` instead of hardcoding a price id. All catalog commands accept `--app <slug>`, `--env dev|prod` (default dev) and `--json`.
@@ -189,6 +193,10 @@ buildspace app billing sync                               # copy dev products/pr
 **Sync needs prod billing on:** `sync` only promotes the dev catalog to production, so it fails until live Stripe is connected and `buildspace app billing enable --env prod` has run. You don't need it to use or verify the dev catalog (`products --json`).
 
 **Updating and removing:** products can be renamed or re-described in place. Stripe prices are immutable, so `prices replace` creates a new price that inherits everything you don't override (including the lookup key, which moves to the new price) and deactivates the old one; existing subscribers stay on the old price. Stripe doesn't allow deleting products or prices that have been used, so "remove" means archive/deactivate. Archived products can't get new prices; create a new product instead.
+
+**Promotion codes:** `promos create` makes a Stripe coupon plus the code customers type (uppercased). Pass exactly one of `--percent-off`, `--amount-off`, or `--amount-off-cents`. `--duration once|repeating|forever` controls how many subscription invoices get the discount (default `once`; `repeating` needs `--months`). Limit use with `--max-redemptions`, `--expires <YYYY-MM-DD>`, `--first-time-only`. Codes apply to the app's current products unless you pass `--products <id|name,...>`, so products added later need a new code. Codes are per environment and `sync` doesn't copy them. Stripe codes can't be deleted, only deactivated.
+
+**Prod promo codes discount real payments.** Creating one with `--env prod` asks for confirmation; non-interactive sessions (agents, `--json`) must pass `--yes`. As an agent, show the user the code, discount, limits, and any `!` warnings the CLI prints (100% off, no limits, `forever`), and get their go-ahead before adding `--yes`. The app still has to opt in at checkout (`allowPromotionCodes` or `promotionCode`; see the buildspace-sdk skill).
 
 **Set up billing end to end (agents):**
 

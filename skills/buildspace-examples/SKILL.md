@@ -58,7 +58,7 @@ See [references/sdk-features.md](references/sdk-features.md).
 
 ### Billing: checkout, portal, entitlements
 
-Pricing UI states, server-side checkout, customer portal, entitlement gating, test vs live mode.
+Pricing UI states, server-side checkout, promotion codes, customer portal, entitlement gating, test vs live mode.
 
 See [references/billing.md](references/billing.md).
 

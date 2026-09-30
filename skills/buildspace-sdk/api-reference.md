@@ -351,8 +351,12 @@ Creates a Stripe Checkout Session on the creator's connected account.
 | `options.appUserId` | `string` | for app-defined identities |
 | `options.quantity` | `number` | no |
 | `options.metadata` | `Record<string, string>` | no |
+| `options.allowPromotionCodes` | `boolean` | no — shows Stripe's promotion code field; subscription prices only (SDK >= 0.7.0) |
+| `options.promotionCode` | `string` | no — customer-facing code to pre-apply, e.g. `"LAUNCH20"`; server SDK only (SDK >= 0.7.0) |
 
 Returns: `{ url: string, stripe_checkout_session_id: string }`
+
+`allowPromotionCodes` and `promotionCode` are mutually exclusive. The browser client accepts `allowPromotionCodes` on `redirectToCheckout` but not `promotionCode` (the API returns 403 for publishable keys).
 
 ### `createPortalSession(options)`
 
