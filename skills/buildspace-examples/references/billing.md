@@ -8,13 +8,14 @@ Billing runs on the creator's connected Stripe account, managed through Creator 
 | Pricing/status page (all states) | `app/dashboard/billing/page.tsx` |
 | Checkout + portal server actions | `app/dashboard/billing/actions.ts` |
 | Redirect buttons (client) | `app/dashboard/billing/checkout-button.tsx` |
+| Promo codes (`?promo=` + form) | `app/dashboard/billing/page.tsx`, `lib/billing.ts` |
 
 ## Always go through `lib/billing.ts`
 
 The helpers feature-detect the SDK's billing namespace and catch `BuildspaceError`, so an app without billing enabled (or an older SDK) renders the "billing isn't enabled" empty state instead of crashing. Never call `bs.billing.*` directly from pages or actions — add a helper.
 
 - `getBillingOverview()` → `{ state: "unavailable" | "disabled" | "active", ... }` with products + prices when active
-- `createCheckout({ userId, priceId, successUrl, cancelUrl })` → `{ url }`
+- `createCheckout({ userId, priceId, successUrl, cancelUrl, promotionCode?, allowPromotionCodes? })` → `{ url }` or `{ error }` for a rejected promo code
 - `createPortalSession({ userId, returnUrl })` → `{ url }`
 - `getSubscription({ userId })` → subscription or null
 - `hasEntitlement({ userId })` → boolean, never throws
@@ -26,19 +27,25 @@ The blessed integration creates the Stripe Checkout session in a server action b
 
 ```ts
 export const startCheckout = authActionClient
-  .inputSchema(z.object({ priceId: z.string().min(1) }))
+  .inputSchema(
+    z.object({
+      priceId: z.string().min(1).max(128),
+      promotionCode: z.string().trim().max(40).regex(PROMO_CODE_PATTERN).optional(),
+    }),
+  )
   .action(async ({ parsedInput, ctx }) => {
-    const { url } = await createCheckout({
+    const origin = await getAppOrigin();
+    return createCheckout({
       userId: ctx.session.user.id,
       priceId: parsedInput.priceId,
+      promotionCode: parsedInput.promotionCode,
       successUrl: `${origin}/dashboard/billing?checkout=success`,
       cancelUrl: `${origin}/dashboard/billing?checkout=cancelled`,
     });
-    return { url };
   });
 ```
 
-The client redirects with `window.location.href = data.url` (see `checkout-button.tsx`). Redirect URLs must be absolute: prefer `NEXT_PUBLIC_APP_URL`, fall back to the request `origin` header (see `getAppOrigin` in the actions file).
+The action returns `{ url }`, or `{ error }` when a promo code is rejected. The client redirects with `window.location.href = data.url` (see `checkout-button.tsx`). Redirect URLs must be absolute: prefer `NEXT_PUBLIC_APP_URL`, fall back to the request `origin` header (see `getAppOrigin` in the actions file).
 
 ## Manage subscription = Stripe customer portal
 
@@ -63,57 +70,39 @@ Requires `@buildspacestudio/sdk` >= 0.7.0 and `@buildspacestudio/cli` >= 0.21.0.
 
 ```bash
 buildspace app billing promos create --code LAUNCH20 --percent-off 20 --max-redemptions 100 --expires 2026-12-31
+buildspace app billing promos create --code FRIEND --percent-off 100 --max-redemptions 1   # single-use, free
 buildspace app billing promos --json            # verify
 ```
 
-The app decides per checkout how a code gets applied. Extend the `createCheckout` helper in `lib/billing.ts` to forward the option you need rather than calling `bs.billing` directly:
+The billing slice already applies codes. The whole flow:
+
+| Piece | Lives at |
+|-------|----------|
+| `createCheckout({ ..., promotionCode?, allowPromotionCodes? })`, `normalizePromoCode`, `PROMO_CODE_PATTERN` | `lib/billing.ts` |
+| `startCheckout` accepts an optional, validated `promotionCode` | `app/dashboard/billing/actions.ts` |
+| `?promo=CODE` links + "Have a promo code?" form (a GET back to the page) | `PromoCodeCard` in `app/dashboard/billing/page.tsx` |
+| Buttons carry the code; a rejected code shows as a toast | `app/dashboard/billing/checkout-button.tsx` |
+| Tests for the promo paths | `app/dashboard/billing/actions.test.ts` |
+
+Share a link like `https://your-app.com/dashboard/billing?promo=LAUNCH20` and the code rides along on every checkout button.
+
+**Rejected codes are returned, not thrown.** `createCheckout` returns `{ error }` when a code is unknown, expired, used up, or doesn't apply to the product, because next-safe-action replaces thrown messages with a generic one. Handle both shapes in `onSuccess`:
 
 ```ts
-export async function createCheckout(opts: {
-  userId: string;
-  priceId: string;
-  successUrl: string;
-  cancelUrl: string;
-  allowPromotionCodes?: boolean;
-  promotionCode?: string;
-}): Promise<{ url: string }> {
-  return getServerClient().billing.createCheckout(opts);
-}
+onSuccess: ({ data }) => {
+  if (data && "error" in data) toast.error(data.error);
+  else if (data?.url) window.location.href = data.url;
+},
 ```
 
-**Let customers type a code (subscriptions).** Pass `allowPromotionCodes: true` and Stripe Checkout shows an "Add promotion code" field. Turn it on only where it makes sense, e.g. for users who arrived from a campaign.
+**Let customers type a code on Stripe's page instead (subscriptions only).** Pass `allowPromotionCodes: true` to `createCheckout` from a server action for the prices or users where it makes sense. It's rejected for one-time prices; use `promotionCode` for those.
 
-**Apply a code from a link or your own form (any price type).** Validate the input and pass it as `promotionCode` from the server action. Don't take the `promotionCode` value from the client blindly for codes meant for specific people — decide on the server:
-
-```ts
-export const startCheckout = authActionClient
-  .inputSchema(
-    z.object({
-      priceId: z.string().min(1).max(128),
-      // From ?promo=LAUNCH20 or a "Have a code?" input.
-      promo: z.string().trim().regex(/^[A-Za-z0-9_-]{3,40}$/).optional(),
-    })
-  )
-  .action(async ({ parsedInput, ctx }) => {
-    const origin = await getAppOrigin();
-    const { url } = await createCheckout({
-      userId: ctx.session.user.id,
-      priceId: parsedInput.priceId,
-      promotionCode: parsedInput.promo,
-      successUrl: `${origin}/dashboard/billing?checkout=success`,
-      cancelUrl: `${origin}/dashboard/billing?checkout=cancelled`,
-    });
-    return { url };
-  });
-```
-
-**Codes for specific people** (staff, partners, beta users): look the user up on the server and pass the code only when they qualify — never ship the code to the browser.
+**Codes for specific people** (staff, partners, beta users): don't put them in links or accept them from the client. Look the user up in the server action and pass `promotionCode` only when they qualify.
 
 Rules:
 - Pass `allowPromotionCodes` or `promotionCode`, never both.
-- `allowPromotionCodes` is rejected for one-time prices; use `promotionCode` for those.
-- A bad, expired, or used-up code throws `BuildspaceError` with `Promotion code not found` (or a Stripe restriction message). Surface it next to the code input via `extractActionError`; don't silently retry without the code.
 - Codes are created per environment. Recreate them with `--env prod` when going live — `billing sync` doesn't copy them.
+- A code only covers the products that existed when it was created (unless `--products` says otherwise); new products need a new code.
 
 ## Test vs live mode
 
