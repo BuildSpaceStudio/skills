@@ -99,7 +99,7 @@ buildspace promote --latest --yes --watch
 ```
 
 - `--latest` promotes the current dev branch head (no deployment id needed). Alternatively pass `--deployment <id>` from `buildspace deploy history --env dev`.
-- `--yes` skips the interactive confirmation — **required in non-interactive/agent sessions** (without it, a headless run fails fast instead of hanging).
+- `--yes` skips the interactive `PROMOTE` confirmation — **required in non-interactive/agent sessions** (without it the run exits 3; see Confirmations).
 - `--watch` follows the rollout to a terminal state, prints the production URL on success, and exits non-zero if the rollout fails. It stops watching after 10 minutes by default (`--timeout <minutes>`, max 60) and exits `2`: the rollout keeps going, so check `buildspace deploy status --env prod` instead of promoting again.
 
 After a successful rollout, verify the app responds (the starter guarantees `GET /api/health`):
@@ -154,7 +154,7 @@ buildspace app create --name "My App" --json  # returns slug, environments, keys
 buildspace app use <slug>                     # set the default app
 buildspace app status [--json]                # hosting, dev preview sleep state, Terms & Privacy checklist (`legal`)
 buildspace app hosting <status|enable|disable> [--env dev|prod]
-buildspace app delete <slug> --confirm <slug>
+buildspace app delete <slug> --yes   # or --confirm <slug>; prompts without it
 ```
 
 ### Dev preview sleep and wake
@@ -196,7 +196,7 @@ buildspace app billing promos deactivate LAUNCH20         # or: activate, remove
 
 **Promotion codes:** `buildspace app billing promos --help` lists every option with examples (CLI >= 0.21.1; earlier versions printed the generic `app` help). `promos create` makes a Stripe coupon plus the code customers type (uppercased). Pass exactly one of `--percent-off`, `--amount-off`, or `--amount-off-cents`. `--duration once|repeating|forever` controls how many subscription invoices get the discount (default `once`; `repeating` needs `--months`). Limit use with `--max-redemptions`, `--expires <YYYY-MM-DD>`, `--first-time-only`. Codes apply to the app's current products unless you pass `--products <id|name,...>`, so products added later need a new code. Codes are per environment and `sync` doesn't copy them. Stripe codes can't be deleted, only deactivated.
 
-**Prod promo codes discount real payments.** Creating one with `--env prod` asks for confirmation; non-interactive sessions (agents, `--json`) must pass `--yes`. As an agent, show the user the code, discount, limits, and any `!` warnings the CLI prints (100% off, no limits, `forever`), and get their go-ahead before adding `--yes`. The app still has to opt in at checkout (`allowPromotionCodes` or `promotionCode`; see the buildspace-sdk skill).
+**Prod promo codes discount real payments.** Creating one with `--env prod` asks for confirmation; non-interactive sessions (agents, `--json`) exit 3 unless `--yes` is passed. As an agent, show the user the code, discount, limits, and any `!` warnings the CLI prints (100% off, no limits, `forever`), and get their go-ahead before adding `--yes`. The app still has to opt in at checkout (`allowPromotionCodes` or `promotionCode`; see the buildspace-sdk skill).
 
 **Set up billing end to end (agents):**
 
@@ -259,10 +259,10 @@ Shows all active env vars for the target environment with masked values. System-
 ### Set
 
 ```bash
-buildspace env set KEY=VALUE [--env dev|prod] [--secret | --no-secret]
+buildspace env set KEY=VALUE [--env dev|prod] [--secret | --no-secret] [--overwrite]
 ```
 
-Creates or updates a custom env var. Key is auto-uppercased. `NEXT_PUBLIC_*` keys default to non-secret. The `BUILDSPACE_*` prefix is reserved and will be rejected.
+Creates or updates a custom env var. If the key already exists, the CLI prompts before replacing it; pass `--overwrite` to skip the prompt (required when not a TTY, e.g. agents/CI). Key is auto-uppercased. `NEXT_PUBLIC_*` keys default to non-secret. The `BUILDSPACE_*` prefix is reserved and will be rejected.
 
 ### Unset
 
@@ -361,6 +361,19 @@ Set the API base URL and git base URL:
 buildspace config
 ```
 
+## Confirmations (agents: read this)
+
+Destructive or live-impacting commands ask before they act: `app delete`, `app unpublish`, `app hosting disable`, `app branding publish|reset`, `app billing promos create --env prod`, `promote`, `agent reset`, `env set` (when the key already exists), `env unset`, `domains remove`, `db delete`, `db token revoke`, `pages delete`.
+
+- **Interactive terminal:** the CLI prompts the person (`[y/N]`, or type the name for irreversible deletes/promotes).
+- **You (non-interactive):** with no TTY, or with `--json`, the command does nothing and exits **3** with `Confirmation required: ...` (with `--json`, `{"error": ..., "code": "CONFIRMATION_REQUIRED"}` on stderr). Exit 3 means "needs a human decision", not "failed". `--json` never counts as consent.
+- **`--yes` (`-y`) is the only way to proceed.** `env set` also accepts `--overwrite`; `app delete` also accepts `--confirm <slug>`.
+
+When to pass `--yes` yourself:
+
+- **Do:** the user explicitly asked for exactly this action in the current conversation (e.g. "delete the scratch-data database", "promote to prod", "replace that key").
+- **Don't:** you inferred the action, it is a side effect of another task, or it targets prod or deletes data the user didn't name. Stop, say what the command will do, ask, and re-run with `--yes` only after they confirm.
+
 ## App resolution
 
 When run inside a BuildSpace app directory (cloned via `buildspace init`), the app slug is read automatically from the git remote. Override with `--app <slug>`.
@@ -399,6 +412,8 @@ buildspace deploy status --env prod          # confirm prod is live and grab the
 ```bash
 buildspace env set MY_API_KEY=sk-123 --env dev --secret
 buildspace env set NEXT_PUBLIC_SITE_URL=https://myapp.com --env prod
+# Replace an existing value non-interactively
+buildspace env set MY_API_KEY=sk-456 --env dev --overwrite
 ```
 
 ## Additional resources
