@@ -330,6 +330,38 @@ Every subcommand accepts the database slug or its UUID, and supports `--json`. C
 
 Full reference: `https://docs.buildspace.studio/docs/database/standalone-databases`.
 
+## Standalone storage buckets
+
+`buildspace storage` manages S3-compatible (Cloudflare R2) buckets owned by your organization rather than by a project — for client uploads, assets, backups, or files several apps share. Buckets are private unless created with `--public`.
+
+```bash
+buildspace storage list                                   # buckets + quota usage
+buildspace storage create "Client uploads"                # private by default; --public to opt in
+buildspace storage show client-uploads                    # endpoint, usage, access keys (no secrets)
+buildspace storage public client-uploads on --yes         # anonymous reads; `off` to make private again
+buildspace storage delete client-uploads --yes            # removes every file and revokes all keys
+```
+
+Move files:
+
+```bash
+buildspace storage upload client-uploads ./a.pdf invoices/a.pdf
+buildspace storage ls client-uploads invoices/
+buildspace storage download client-uploads invoices/a.pdf
+buildspace storage rm client-uploads invoices/a.pdf --yes
+```
+
+Access keys are bucket-scoped S3 credentials (max 3 active per bucket); the secret prints ONCE:
+
+```bash
+buildspace storage keys create client-uploads --label prod-app
+buildspace storage keys revoke client-uploads <keyId> --yes
+```
+
+Every subcommand accepts the bucket slug or its UUID, and supports `--json`. Connect from code with `@aws-sdk/client-s3` (`region: "auto"`, the printed endpoint) with the keys in env vars — never hardcode the secret.
+
+Full reference: `https://docs.buildspace.studio/docs/storage/standalone-buckets`.
+
 ## Pages
 
 `buildspace pages` publishes a single HTML file to a hosted, gated URL under your creator handle — no project, build, or deploy required. Buildspace stores and serves the file as-is; it never generates, rewrites, or executes it.
