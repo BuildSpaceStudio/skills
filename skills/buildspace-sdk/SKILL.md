@@ -123,10 +123,25 @@ bs.clearSession();
 **Browser** — batched with auto-flush:
 
 ```ts
-bs.events.track("page_viewed", { path: "/pricing" });
+bs.events.track("button_clicked", { label: "upgrade" });
+bs.events.page();                 // page_viewed with path, landing referrer, UTM tags
 await bs.events.flush();
 await bs.events.shutdown();
 ```
+
+**Page views** — mount `<Analytics />` once in the root layout, inside `<BuildspaceProvider>`. Studio and `buildspace app activity` show top pages, referrers, campaigns and unique visitors from it (cookieless; query strings are never stored):
+
+```tsx
+"use client";
+import { Analytics } from "@buildspacestudio/sdk/react";
+import { usePathname } from "next/navigation";
+
+export function PageViews() {
+  return <Analytics path={usePathname()} />;
+}
+```
+
+Redact ids/tokens in paths with `beforeSend={(view) => ({ ...view, path: redact(view.path) })}`; return `null` to skip a view. Queued events flush automatically when the tab is hidden or closed.
 
 **Server** — immediate, awaitable:
 

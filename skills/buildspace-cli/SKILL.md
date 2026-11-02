@@ -233,16 +233,19 @@ buildspace app branding reset --yes                         # back to Buildspace
 
 ### Analytics and reports
 
-Read-only; each command accepts `--app <slug>` and `--json`. Use these to see how an app is doing and to feed data to an AI summary:
+Read-only; each command accepts `--app <slug>` and `--json`. When the creator asks "how is my app doing?" or "what happened this week?", start with `status` (all apps) or `app activity` (one app) and relay the brief as-is — it is already short and ordered by importance:
 
 ```bash
+buildspace status [--since 7d]                  # one line per app: visitors, new users, last deploy, uptime, alerts
+buildspace app activity [--since 7d]            # ~10-line brief: traffic, users, events, deploys, uptime, highlights
+buildspace app report --brief                   # same brief as `app activity`
 buildspace app insights [--days 30]             # event totals, unique actors, top events
 buildspace app emails [--days 30] [--limit 10]  # sent, delivery/open/click rates, recent sends
 buildspace app users                            # users and last logins
-buildspace app report [--days 30] --json        # insights + emails + users + billing in one snapshot
+buildspace app report [--days 30] --json        # activity + insights + emails + users + billing in one snapshot
 ```
 
-`--days` is 1–365 (default 30). In `report`, each section is `{ data }` or `{ error }`, so one failing section doesn't hide the rest. For deployments use `buildspace deploy status|history|logs`.
+`--days` is 1–365 (`--since 7d|2w` also works for `status`/`activity`, which default to 7 days; the others default to 30). Every number in `activity` is compared with the same-length period before it (`changePct`, `null` when the previous period was 0). `highlights` lists what matters first: production down, failed deploys nobody fixed, then growth and top referrers. In `report`, each section is `{ data }` or `{ error }`, so one failing section doesn't hide the rest. For deploy logs use `buildspace deploy status|history|logs`.
 
 ## Environment variables
 
